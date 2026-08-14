@@ -13,7 +13,12 @@ import {
   Plus, 
   Search, 
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Archive,
+  UserX,
+  UserMinus,
+  Filter,
+  X
 } from 'lucide-react';
 import { api } from './services/api';
 
@@ -22,8 +27,15 @@ export function App() {
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [clientesList, setclientesList] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrigem, setSelectedOrigem] = useState('');
+  
+  // Estado para o card superior clicado (Filtro por status do card)
+  const [selectedStatusCard, setSelectedStatusCard] = useState('');
+
+  // Estados dos filtros do painel múltiplo (Funil Cumulativo)
+  const [filterTexto, setFilterTexto] = useState('');
+  const [filterOrigem, setFilterOrigem] = useState('');
+  const [filterCidade, setFilterCidade] = useState('');
+
   const [activeTab, setActiveTab] = useState('clientes');
 
   useEffect(() => {
@@ -54,16 +66,29 @@ export function App() {
     return <Login onLoginSuccess={(u) => { setUser(u); fetchclientes(); }} />;
   }
 
-  // Extrai dinamicamente todas as origens únicas cadastradas para popular o select
+  // Função auxiliar para determinar o status real do cliente
+  const getClientStatus = (c: any) => {
+    if (c.status && c.status !== 'Ativo') {
+      return c.status;
+    }
+    const temProcesso = c.processoId || c.hasProcess || c.processo; 
+    return temProcesso ? 'Ativo' : 'Sem Processo';
+  };
+
+  // Opções dinâmicas para os selects baseadas na base de clientes
   const origensDisponiveis = Array.from(
     new Set(clientesList.map(c => c.origem).filter(Boolean))
   );
 
-  // Filtro unificado combinando busca por texto e seleção de origem
-  const filteredclientes = clientesList.filter((c) => {
-    const term = searchTerm.toLowerCase();
+  const cidadesDisponiveis = Array.from(
+    new Set(clientesList.map(c => c.cidade || c.city).filter(Boolean))
+  );
+
+  // Função base que valida se o cliente passa pelos filtros do painel múltiplo
+  const matchesPainelFiltros = (c: any) => {
+    const term = filterTexto.toLowerCase();
     
-    const matchesSearch = !searchTerm || (
+    const matchesTexto = !filterTexto || (
       (c.nome || c.name)?.toLowerCase().includes(term) ||
       c.cpf?.toLowerCase().includes(term) ||
       c.cpfCnpj?.toLowerCase().includes(term) ||
@@ -75,10 +100,39 @@ export function App() {
       c.nis?.toLowerCase().includes(term)
     );
 
-    const matchesOrigem = !selectedOrigem || c.origem === selectedOrigem;
+    const matchesOrigem = !filterOrigem || c.origem === filterOrigem;
+    const matchesCidade = !filterCidade || (c.cidade || c.city) === filterCidade;
 
-    return matchesSearch && matchesOrigem;
+    return matchesTexto && matchesOrigem && matchesCidade;
+  };
+
+  // 1. Contadores dos Cards Superiores (Respondem em tempo real ao painel de filtros múltiplos)
+  const clientesParaCards = clientesList.filter(matchesPainelFiltros);
+
+  const totalClientesCount = clientesParaCards.length;
+  const clientesAtivosCount = clientesParaCards.filter(c => getClientStatus(c) === 'Ativo').length;
+  const emProspeccaoCount = clientesParaCards.filter(c => getClientStatus(c) === 'Em Prospecção').length;
+  const arquivadosCount = clientesParaCards.filter(c => getClientStatus(c) === 'Arquivado').length;
+  const descartadosCount = clientesParaCards.filter(c => getClientStatus(c) === 'Descartado').length;
+  const semProcessoCount = clientesParaCards.filter(c => getClientStatus(c) === 'Sem Processo').length;
+
+  // 2. Lista final exibida na tabela (Combina o painel múltiplo + o card selecionado)
+  const filteredclientes = clientesList.filter((c) => {
+    const passaPainel = matchesPainelFiltros(c);
+    const cStatus = getClientStatus(c);
+    const passaCardStatus = !selectedStatusCard || cStatus === selectedStatusCard;
+
+    return passaPainel && passaCardStatus;
   });
+
+  const handleClearFunil = () => {
+    setFilterTexto('');
+    setFilterOrigem('');
+    setFilterCidade('');
+    setSelectedStatusCard('');
+  };
+
+  const hasActiveFunil = filterTexto || filterOrigem || filterCidade || selectedStatusCard;
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -166,31 +220,8 @@ export function App() {
             <span className="font-semibold text-slate-800 capitalize">{activeTab}</span>
           </div>
 
-          {/* BARRA DE BUSCA E FILTRO DINÂMICO DE ORIGEM */}
           <div className="flex items-center gap-3 flex-1 max-w-xl">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-2.5 text-slate-400" size={18} />
-              <input
-                type="text"
-                placeholder="Pesquisar cliente ou processo em qualquer tela..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition duration-150"
-              />
-            </div>
-
-            <select
-              value={selectedOrigem}
-              onChange={(e) => setSelectedOrigem(e.target.value)}
-              className="py-2 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition duration-150 text-slate-600 shrink-0"
-            >
-              <option value="">Todas as Origens</option>
-              {origensDisponiveis.map((origem: any) => (
-                <option key={origem} value={origem}>
-                  {origem}
-                </option>
-              ))}
-            </select>
+            {/* Mantido espaço superior limpo */}
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
@@ -218,42 +249,169 @@ export function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+              {/* DASHBOARD DE CARDS (Com contadores reativos aos filtros) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+                {/* Total */}
+                <div 
+                  onClick={() => setSelectedStatusCard('')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === '' ? 'border-blue-600 ring-2 ring-blue-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Clientes</p>
-                    <h3 className="text-2xl font-bold text-slate-900 mt-1">{clientesList.length}</h3>
+                    <h3 className="text-2xl font-bold text-slate-900 mt-1">{totalClientesCount}</h3>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                     <Users size={22} />
                   </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                {/* Ativos */}
+                <div 
+                  onClick={() => setSelectedStatusCard('Ativo')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Ativo' ? 'border-emerald-600 ring-2 ring-emerald-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clientes Ativos</p>
-                    <h3 className="text-2xl font-bold text-emerald-600 mt-1">
-                      {clientesList.filter(c => c.status === 'Ativo' || !c.status).length}
-                    </h3>
+                    <h3 className="text-2xl font-bold text-emerald-600 mt-1">{clientesAtivosCount}</h3>
                   </div>
                   <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
                     <UserCheck size={22} />
                   </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                {/* Em Prospecção */}
+                <div 
+                  onClick={() => setSelectedStatusCard('Em Prospecção')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Em Prospecção' ? 'border-amber-600 ring-2 ring-amber-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Em Prospecção</p>
-                    <h3 className="text-2xl font-bold text-amber-600 mt-1">
-                      {clientesList.filter(c => c.status === 'Em Prospecção').length}
-                    </h3>
+                    <h3 className="text-2xl font-bold text-amber-600 mt-1">{emProspeccaoCount}</h3>
                   </div>
                   <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
                     <Briefcase size={22} />
                   </div>
                 </div>
+
+                {/* Arquivados */}
+                <div 
+                  onClick={() => setSelectedStatusCard('Arquivado')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Arquivado' ? 'border-indigo-600 ring-2 ring-indigo-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clientes Arquivados</p>
+                    <h3 className="text-2xl font-bold text-indigo-600 mt-1">{arquivadosCount}</h3>
+                  </div>
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <Archive size={22} />
+                  </div>
+                </div>
+
+                {/* Descartados */}
+                <div 
+                  onClick={() => setSelectedStatusCard('Descartado')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Descartado' ? 'border-red-600 ring-2 ring-red-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clientes Descartados</p>
+                    <h3 className="text-2xl font-bold text-red-600 mt-1">{descartadosCount}</h3>
+                  </div>
+                  <div className="p-3 bg-red-50 text-red-600 rounded-xl">
+                    <UserX size={22} />
+                  </div>
+                </div>
+
+                {/* Sem Processo */}
+                <div 
+                  onClick={() => setSelectedStatusCard('Sem Processo')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Sem Processo' ? 'border-slate-600 ring-2 ring-slate-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sem Processo</p>
+                    <h3 className="text-2xl font-bold text-slate-600 mt-1">{semProcessoCount}</h3>
+                  </div>
+                  <div className="p-3 bg-slate-100 text-slate-600 rounded-xl">
+                    <UserMinus size={22} />
+                  </div>
+                </div>
               </div>
 
+              {selectedStatusCard && (
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Filtrando por status do card: <strong>{selectedStatusCard}</strong></span>
+                  <button 
+                    onClick={() => setSelectedStatusCard('')} 
+                    className="text-xs text-blue-600 hover:underline font-semibold"
+                  >
+                    Limpar filtro de status
+                  </button>
+                </div>
+              )}
+
+              {/* PAINEL DE FILTROS MÚLTIPLOS (FUNIL CUMULATIVO - Sem campo de status) */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm mb-8">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
+                    <Filter size={16} className="text-blue-600" />
+                    <span>Painel de Filtros Múltiplos (Funil Cumulativo)</span>
+                  </div>
+                  {hasActiveFunil && (
+                    <button 
+                      onClick={handleClearFunil}
+                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium transition"
+                    >
+                      <X size={14} />
+                      Limpar filtro múltiplo
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Buscar por Nome / CPF</label>
+                    <div className="relative">
+                      <Search className="absolute left-3.5 top-2.5 text-slate-400" size={16} />
+                      <input 
+                        type="text"
+                        placeholder="Ex: Maria, 123..."
+                        value={filterTexto}
+                        onChange={(e) => setFilterTexto(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Origem</label>
+                    <select 
+                      value={filterOrigem}
+                      onChange={(e) => setFilterOrigem(e.target.value)}
+                      className="w-full py-2 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+                    >
+                      <option value="">Todas as origens</option>
+                      {origensDisponiveis.map(origem => (
+                        <option key={origem} value={origem}>{origem}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Cidade</label>
+                    <select 
+                      value={filterCidade}
+                      onChange={(e) => setFilterCidade(e.target.value)}
+                      className="w-full py-2 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+                    >
+                      <option value="">Todas as cidades</option>
+                      {cidadesDisponiveis.map(cidade => (
+                        <option key={cidade} value={cidade}>{cidade}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* TABELA DE CLIENTES */}
               <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -261,6 +419,7 @@ export function App() {
                       <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/30">
                         <th className="py-3.5 px-6">Nome do Cliente</th>
                         <th className="py-3.5 px-6">CPF / CNPJ</th>
+                        <th className="py-3.5 px-6">Cidade</th>
                         <th className="py-3.5 px-6">Telefone</th>
                         <th className="py-3.5 px-6">Status</th>
                       </tr>
@@ -268,36 +427,48 @@ export function App() {
                     <tbody className="divide-y divide-slate-100 text-sm">
                       {filteredclientes.length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-12 text-center text-slate-400">
-                            Nenhum cliente localizado com esse critério.
+                          <td colSpan={5} className="py-12 text-center text-slate-400">
+                            Nenhum cliente localizado com esses critérios combinados.
                           </td>
                         </tr>
                       ) : (
-                        filteredclientes.map((client) => (
-                          <tr 
-                            key={client.id || client._id} 
-                            onClick={() => { setSelectedClient(client); setIsModalOpen(true); }}
-                            className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                            title="Clique para editar"
-                          >
-                            <td className="py-4 px-6 font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
-                              {client.nome || client.name || '-'}
-                            </td>
-                            <td className="py-4 px-6 text-slate-600 font-mono text-xs">
-                              {client.cpf || client.cpfCnpj || '-'}
-                            </td>
-                            <td className="py-4 px-6 text-slate-600">{client.telefone || client.phone || '-'}</td>
-                            <td className="py-4 px-6">
-                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                client.status === 'Ativo' || !client.status
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
-                              }`}>
-                                {client.status || 'Ativo'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
+                        filteredclientes.map((client) => {
+                          const currentStatus = getClientStatus(client);
+                          return (
+                            <tr 
+                              key={client.id || client._id} 
+                              onClick={() => { setSelectedClient(client); setIsModalOpen(true); }}
+                              className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                              title="Clique para editar"
+                            >
+                              <td className="py-4 px-6 font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                                {client.nome || client.name || '-'}
+                              </td>
+                              <td className="py-4 px-6 text-slate-600 font-mono text-xs">
+                                {client.cpf || client.cpfCnpj || '-'}
+                              </td>
+                              <td className="py-4 px-6 text-slate-600">
+                                {client.cidade || client.city || '-'}
+                              </td>
+                              <td className="py-4 px-6 text-slate-600">{client.telefone || client.phone || '-'}</td>
+                              <td className="py-4 px-6">
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                  currentStatus === 'Ativo'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                    : (currentStatus === 'Em Prospecção'
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : (currentStatus === 'Arquivado'
+                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                        : (currentStatus === 'Descartado'
+                                          ? 'bg-red-50 text-red-700 border border-red-200'
+                                          : 'bg-slate-100 text-slate-700 border border-slate-200')))
+                                }`}>
+                                  {currentStatus}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
