@@ -1,5 +1,7 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
+import { or, like } from 'drizzle-orm';
+
 
 // 1. SETORES (Ex: Comercial, Jurídico, Financeiro)
 export const sectors = sqliteTable('sectors', {
@@ -21,27 +23,73 @@ export const roles = sqliteTable('roles', {
 
 // 3. USUÁRIOS
 export const users = sqliteTable('users', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
-  sectorId: text('sector_id').references(() => sectors.id),
-  roleId: text('role_id').references(() => roles.id),
-  active: integer('active', { mode: 'boolean' }).notNull().default(true),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  sectorId: integer('sector_id'),
+  roleId: integer('role_id'),
 });
 
-// 4. PERMISSÕES CONFIGURÁVEIS (Módulo, Ação, Perfil, Setor, Restrições de Campos)
-export const permissions = sqliteTable('permissions', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  roleId: text('role_id').references(() => roles.id),
-  sectorId: text('sector_id').references(() => sectors.id),
-  module: text('module').notNull(), // Ex: 'finance', 'clients', 'processes'
-  action: text('action').notNull(), // Ex: 'view', 'create', 'edit', 'delete', 'export'
-  restrictedFields: text('restricted_fields'), // JSON com campos ocultos ex: ["financial_info"]
-  allowed: integer('allowed', { mode: 'boolean' }).notNull().default(true),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-});
+// 4. PERMISSÕES CONFIGURÁVEIS
+// Regra pode ser atribuída diretamente a:
+// - usuário
+// - perfil
+// - setor
+//
+// Pelo menos um dos três escopos deverá ser informado pela aplicação.
+export const permissions = sqliteTable(
+  'permissions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+    userId: text('user_id').references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+
+    roleId: text('role_id').references(() => roles.id, {
+      onDelete: 'cascade',
+    }),
+
+    sectorId: text('sector_id').references(() => sectors.id, {
+      onDelete: 'cascade',
+    }),
+
+    module: text('module').notNull(),
+
+    action: text('action').notNull(),
+
+    // JSON:
+    // ["financial_info", "gov_password"]
+    restrictedFields: text('restricted_fields'),
+
+    allowed: integer('allowed', {
+      mode: 'boolean',
+    }).notNull().default(true),
+
+    createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  },
+
+  (table) => [
+    uniqueIndex('permissions_user_module_action_idx').on(
+      table.userId,
+      table.module,
+      table.action,
+    ),
+
+    uniqueIndex('permissions_role_module_action_idx').on(
+      table.roleId,
+      table.module,
+      table.action,
+    ),
+
+    uniqueIndex('permissions_sector_module_action_idx').on(
+      table.sectorId,
+      table.module,
+      table.action,
+    ),
+  ],
+);
 
 // 5. AUDITORIA DE SEGURANÇA E ALTERAÇÕES
 export const auditLogs = sqliteTable('audit_logs', {
@@ -57,21 +105,28 @@ export const auditLogs = sqliteTable('audit_logs', {
 });
 
 // 6. CLIENTES (Dados Primários)
-export const clients = sqliteTable('clients', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name').notNull(),
-  cpfCnpj: text('cpf_cnpj').notNull().unique(),
+export const clientes = sqliteTable('clientes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nome: text('nome').notNull(),
+  cpf: text('cpf'),
   rg: text('rg'),
-  birthDate: text('birth_date'),
-  motherName: text('mother_name'),
-  nitPis: text('nit_pis'),
-  phone: text('phone'),
-  email: text('email'),
-  address: text('address'),
-  status: text('status').notNull().default('Ativo'), // Ex: 'Em Prospecção', 'Ativo', 'Arquivado'
-  notes: text('notes'),
-  createdBy: text('created_by').references(() => users.id),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  dataNascimento: text('data_nascimento'),
+  nomeMae: text('nome_mae'),
+  genero: text('genero'),
+  nacionalidade: text('nacionalidade').default('Brasileira'),
+  estadoCivil: text('estado_civil'),
+  profissao: text('profissao'),
+  telefone: text('telefone'),
+  origem: text('origem'),
+  cep: text('cep'),
+  endereco: text('endereco'),
+  bairro: text('bairro'),
+  cidade: text('cidade'),
+  estado: text('estado'),
+  nomeRepresentante: text('nome_representante'),
+  cpfRepresentante: text('cpf_representante'),
+  senhaGov: text('senha_gov'),
+  nis: text('nis'),
 });
 
 // 7. DEFINIÇÃO DE CAMPOS CUSTOMIZADOS DE CLIENTES
@@ -89,7 +144,7 @@ export const clientCustomFields = sqliteTable('client_custom_fields', {
 // 8. VALORES DOS CAMPOS CUSTOMIZADOS DOS CLIENTES
 export const clientCustomValues = sqliteTable('client_custom_values', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  clientId: text('client_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
   fieldId: text('field_id').notNull().references(() => clientCustomFields.id, { onDelete: 'cascade' }),
   value: text('value'), // Armazenado como string (interpretado de acordo com fieldType)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),

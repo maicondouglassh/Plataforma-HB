@@ -1,3 +1,4 @@
+import { ClientModal } from './components/ClientModal';
 import { useState, useEffect } from 'react';
 import { Login } from './pages/Login';
 import { 
@@ -17,24 +18,26 @@ import {
 import { api } from './services/api';
 
 export function App() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
-  const [clientsList, setClientsList] = useState<any[]>([]);
+  const [clientesList, setclientesList] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState('clients');
+  const [activeTab, setActiveTab] = useState('clientes');
 
   useEffect(() => {
     const savedUser = localStorage.getItem('@PlataformaHB:user');
     const token = localStorage.getItem('@PlataformaHB:token');
     if (savedUser && token) {
       setUser(JSON.parse(savedUser));
-      fetchClients();
+      fetchclientes();
     }
   }, []);
 
-  const fetchClients = async () => {
+  const fetchclientes = async () => {
     try {
-      const response = await api.get('/clients');
-      setClientsList(response.data);
+      const response = await api.get('/clientes');
+      setclientesList(response.data);
     } catch (err) {
       console.error('Erro ao buscar clientes', err);
     }
@@ -47,20 +50,32 @@ export function App() {
   };
 
   if (!user) {
-    return <Login onLoginSuccess={(u) => { setUser(u); fetchClients(); }} />;
+    return <Login onLoginSuccess={(u) => { setUser(u); fetchclientes(); }} />;
   }
 
-  const filteredClients = clientsList.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.cpfCnpj.includes(searchTerm)
-  );
+  // Filtro adaptado para buscar tanto propriedades em português quanto em inglês
+  const filteredclientes = clientesList.filter((c) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+
+    return (
+      (c.nome || c.name)?.toLowerCase().includes(term) ||
+      c.cpf?.toLowerCase().includes(term) ||
+      c.cpfCnpj?.toLowerCase().includes(term) ||
+      c.rg?.toLowerCase().includes(term) ||
+      (c.nomeMae || c.motherName)?.toLowerCase().includes(term) ||
+      (c.telefone || c.phone)?.toLowerCase().includes(term) ||
+      (c.cidade || c.city)?.toLowerCase().includes(term) ||
+      (c.profissao || c.profession)?.toLowerCase().includes(term) ||
+      c.nis?.toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      {/* SIDEBAR LATERAL FIXA - Tons Slate Dark para Sofisticação */}
+      {/* SIDEBAR LATERAL FIXA */}
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800">
         <div>
-          {/* LOGO DA PLATAFORMA - Mais minimalista e corporativa */}
           <div className="p-6 flex items-center gap-3 border-b border-slate-800">
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-600/30">
               <Building2 size={24} />
@@ -71,11 +86,10 @@ export function App() {
             </div>
           </div>
 
-          {/* MENU DE NAVEGAÇÃO - Ícones minimalistas e estados claros */}
           <nav className="p-4 space-y-1">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-              { id: 'clients', label: 'Clientes', icon: Users, count: clientsList.length },
+              { id: 'clientes', label: 'Clientes', icon: Users, count: clientesList.length },
               { id: 'processes', label: 'Processos', icon: Briefcase, badge: 'Em breve' },
               { id: 'documents', label: 'Documentos', icon: FileText },
               { id: 'settings', label: 'Configurações', icon: Settings },
@@ -96,7 +110,7 @@ export function App() {
                     <Icon size={18} />
                     <span>{item.label}</span>
                   </div>
-                  {item.count && (
+                  {item.count !== undefined && (
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isActive ? 'bg-white text-blue-700' : 'bg-slate-800 text-slate-300'}`}>
                       {item.count}
                     </span>
@@ -112,7 +126,6 @@ export function App() {
           </nav>
         </div>
 
-        {/* PERFIL DO USUÁRIO & LOGOUT - Integrado na base da sidebar */}
         <div className="p-4 border-t border-slate-800">
           <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-800">
             <div className="flex items-center gap-3 overflow-hidden">
@@ -135,17 +148,27 @@ export function App() {
         </div>
       </aside>
 
-      {/* ÁREA DE CONTEÚDO PRINCIPAL - Fundo Slate 50 para clareza */}
+      {/* ÁREA DE CONTEÚDO PRINCIPAL */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* BARRA SUPERIOR (HEADER) - Limpa e informativa */}
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-3 text-slate-500 text-sm">
+        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between sticky top-0 z-10 gap-4">
+          <div className="flex items-center gap-3 text-slate-500 text-sm shrink-0">
             <span className="hover:text-slate-800 cursor-pointer">Início</span>
             <ChevronRight size={14} />
             <span className="font-semibold text-slate-800 capitalize">{activeTab}</span>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3.5 top-2.5 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Pesquisar cliente ou processo em qualquer tela..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition duration-150"
+            />
+          </div>
+
+          <div className="flex items-center gap-4 shrink-0">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
               <ShieldCheck size={14} />
               Banco SQLite Local Conectado
@@ -153,121 +176,125 @@ export function App() {
           </div>
         </header>
 
-        {/* ÁREA DE TRABALHO - Espaçamento generoso */}
         <main className="flex-1 p-8 overflow-y-auto">
-          {/* CABEÇALHO DA PÁGINA DE CLIENTES */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Gestão de Clientes</h2>
-              <p className="text-slate-500 text-sm mt-0.5">Cadastre e acompanhe as fichas dos clientes previdenciários.</p>
-            </div>
-            <button className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-md shadow-blue-600/20 transition duration-150">
-              <Plus size={18} />
-              Novo Cliente
-            </button>
-          </div>
+          {activeTab === 'clientes' && (
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Gestão de Clientes</h2>
+                  <p className="text-slate-500 text-sm mt-0.5">Clique em qualquer linha da tabela para visualizar ou editar os dados.</p>
+                </div>
+                <button 
+                  onClick={() => { setSelectedClient(null); setIsModalOpen(true); }}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-md shadow-blue-600/20 transition duration-150"
+                >
+                  <Plus size={18} />
+                  Novo Cliente
+                </button>
+              </div>
 
-          {/* METRIC CARDS - Design limpo, bordas suaves e ícones destacados */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Clientes</p>
-                <h3 className="text-2xl font-bold text-slate-900 mt-1">{clientsList.length}</h3>
-              </div>
-              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                <Users size={22} />
-              </div>
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Clientes</p>
+                    <h3 className="text-2xl font-bold text-slate-900 mt-1">{clientesList.length}</h3>
+                  </div>
+                  <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                    <Users size={22} />
+                  </div>
+                </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clientes Ativos</p>
-                <h3 className="text-2xl font-bold text-emerald-600 mt-1">
-                  {clientsList.filter(c => c.status === 'Ativo').length}
-                </h3>
-              </div>
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-                <UserCheck size={22} />
-              </div>
-            </div>
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clientes Ativos</p>
+                    <h3 className="text-2xl font-bold text-emerald-600 mt-1">
+                      {clientesList.filter(c => c.status === 'Ativo' || !c.status).length}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <UserCheck size={22} />
+                  </div>
+                </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Em Prospecção</p>
-                <h3 className="text-2xl font-bold text-amber-600 mt-1">
-                  {clientsList.filter(c => c.status === 'Em Prospecção').length}
-                </h3>
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Em Prospecção</p>
+                    <h3 className="text-2xl font-bold text-amber-600 mt-1">
+                      {clientesList.filter(c => c.status === 'Em Prospecção').length}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                    <Briefcase size={22} />
+                  </div>
+                </div>
               </div>
-              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-                <Briefcase size={22} />
-              </div>
-            </div>
-          </div>
 
-          {/* TABELA E BUSCA - Container unificado, visual SaaS moderno */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-            {/* BARRA DE PESQUISA - Integrada ao card da tabela */}
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between gap-4">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3.5 top-2.5 text-slate-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Buscar por nome ou CPF..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition duration-150"
-                />
-              </div>
-            </div>
-
-            {/* TABELA DE DADOS - Espaçamento e tipografia refinados */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/30">
-                    <th className="py-3.5 px-6">Nome do Cliente</th>
-                    <th className="py-3.5 px-6">CPF / CNPJ</th>
-                    <th className="py-3.5 px-6">Telefone</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-sm">
-                  {filteredClients.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-slate-400">
-                        Nenhum cliente localizado.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredClients.map((client) => (
-                      <tr key={client.id} className="hover:bg-slate-50/80 transition-colors group">
-                        <td className="py-4 px-6 font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
-                          {client.name}
-                        </td>
-                        <td className="py-4 px-6 text-slate-600 font-mono text-xs">{client.cpfCnpj}</td>
-                        <td className="py-4 px-6 text-slate-600">{client.phone || '-'}</td>
-                        <td className="py-4 px-6">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            client.status === 'Ativo' 
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                              : 'bg-slate-100 text-slate-700 border border-slate-200'
-                          }`}>
-                            {client.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6 text-right">
-                          <button className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition duration-150">
-                            Ver Ficha
-                          </button>
-                        </td>
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/30">
+                        <th className="py-3.5 px-6">Nome do Cliente</th>
+                        <th className="py-3.5 px-6">CPF / CNPJ</th>
+                        <th className="py-3.5 px-6">Telefone</th>
+                        <th className="py-3.5 px-6">Status</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-sm">
+                      {filteredclientes.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-12 text-center text-slate-400">
+                            Nenhum cliente localizado com esse critério.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredclientes.map((client) => (
+                          <tr 
+                            key={client.id || client._id} 
+                            onClick={() => { setSelectedClient(client); setIsModalOpen(true); }}
+                            className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                            title="Clique para editar"
+                          >
+                            <td className="py-4 px-6 font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                              {client.nome || client.name || '-'}
+                            </td>
+                            <td className="py-4 px-6 text-slate-600 font-mono text-xs">
+                              {client.cpf || client.cpfCnpj || '-'}
+                            </td>
+                            <td className="py-4 px-6 text-slate-600">{client.telefone || client.phone || '-'}</td>
+                            <td className="py-4 px-6">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                client.status === 'Ativo' || !client.status
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}>
+                                {client.status || 'Ativo'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab !== 'clientes' && (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-12 text-center">
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Módulo em Desenvolvimento</h3>
+              <p className="text-slate-500 text-sm">O conteúdo da aba "{activeTab}" aparecerá aqui em breve.</p>
             </div>
-          </div>
+          )}
+
+          <ClientModal
+            isOpen={isModalOpen}
+            onClose={() => { setIsModalOpen(false); setSelectedClient(null); }}
+            onSave={fetchclientes}
+            onSuccess={fetchclientes}
+            clientToEdit={selectedClient} 
+          />
         </main>
       </div>
     </div>

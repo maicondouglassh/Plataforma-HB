@@ -16,11 +16,11 @@ CREATE TABLE `client_custom_values` (
 	`field_id` text NOT NULL,
 	`value` text,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP,
-	FOREIGN KEY (`client_id`) REFERENCES `clients`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`client_id`) REFERENCES `clientes`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`field_id`) REFERENCES `client_custom_fields`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `clients` (
+CREATE TABLE `clientes` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`cpf_cnpj` text NOT NULL,
@@ -38,4 +38,4 @@ CREATE TABLE `clients` (
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `clients_cpf_cnpj_unique` ON `clients` (`cpf_cnpj`);
+CREATE UNIQUE INDEX `clientes_cpf_cnpj_unique` ON `clientes` (`cpf_cnpj`);

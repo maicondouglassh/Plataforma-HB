@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "488a7106-fb05-4ed5-934c-eae9ec1ce4bc",
-  "prevId": "920a20f6-4d0c-4bf5-99db-49706b43a756",
+  "id": "9605b622-c550-4ac7-965c-89ada77148cc",
+  "prevId": "488a7106-fb05-4ed5-934c-eae9ec1ce4bc",
   "tables": {
     "audit_logs": {
       "name": "audit_logs",
@@ -259,11 +259,11 @@
           "notNull": true,
           "autoincrement": false
         },
-        "cpf_cnpj": {
-          "name": "cpf_cnpj",
+        "cpf": {
+          "name": "cpf",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "rg": {
@@ -287,8 +287,29 @@
           "notNull": false,
           "autoincrement": false
         },
-        "nit_pis": {
-          "name": "nit_pis",
+        "gender": {
+          "name": "gender",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "nationality": {
+          "name": "nationality",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "marital_status": {
+          "name": "marital_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "profession": {
+          "name": "profession",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -301,8 +322,15 @@
           "notNull": false,
           "autoincrement": false
         },
-        "email": {
-          "name": "email",
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cep": {
+          "name": "cep",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -315,23 +343,50 @@
           "notNull": false,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'Ativo'"
-        },
-        "notes": {
-          "name": "notes",
+        "neighborhood": {
+          "name": "neighborhood",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_by": {
-          "name": "created_by",
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "representative_name": {
+          "name": "representative_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "representative_cpf": {
+          "name": "representative_cpf",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "gov_password": {
+          "name": "gov_password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "nis": {
+          "name": "nis",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -341,35 +396,12 @@
           "name": "created_at",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
+          "notNull": true,
+          "autoincrement": false
         }
       },
-      "indexes": {
-        "clientes_cpf_cnpj_unique": {
-          "name": "clientes_cpf_cnpj_unique",
-          "columns": [
-            "cpf_cnpj"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "clientes_created_by_users_id_fk": {
-          "name": "clientes_created_by_users_id_fk",
-          "tableFrom": "clientes",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -382,6 +414,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "role_id": {
@@ -436,8 +475,49 @@
           "default": "CURRENT_TIMESTAMP"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "permissions_user_module_action_idx": {
+          "name": "permissions_user_module_action_idx",
+          "columns": [
+            "user_id",
+            "module",
+            "action"
+          ],
+          "isUnique": true
+        },
+        "permissions_role_module_action_idx": {
+          "name": "permissions_role_module_action_idx",
+          "columns": [
+            "role_id",
+            "module",
+            "action"
+          ],
+          "isUnique": true
+        },
+        "permissions_sector_module_action_idx": {
+          "name": "permissions_sector_module_action_idx",
+          "columns": [
+            "sector_id",
+            "module",
+            "action"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
+        "permissions_user_id_users_id_fk": {
+          "name": "permissions_user_id_users_id_fk",
+          "tableFrom": "permissions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "permissions_role_id_roles_id_fk": {
           "name": "permissions_role_id_roles_id_fk",
           "tableFrom": "permissions",
@@ -448,7 +528,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "permissions_sector_id_sectors_id_fk": {
@@ -461,7 +541,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
