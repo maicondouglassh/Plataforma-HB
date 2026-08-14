@@ -23,6 +23,7 @@ export function App() {
   const [user, setUser] = useState<any>(null);
   const [clientesList, setclientesList] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedOrigem, setSelectedOrigem] = useState('');
   const [activeTab, setActiveTab] = useState('clientes');
 
   useEffect(() => {
@@ -53,12 +54,16 @@ export function App() {
     return <Login onLoginSuccess={(u) => { setUser(u); fetchclientes(); }} />;
   }
 
-  // Filtro adaptado para buscar tanto propriedades em português quanto em inglês
-  const filteredclientes = clientesList.filter((c) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
+  // Extrai dinamicamente todas as origens únicas cadastradas para popular o select
+  const origensDisponiveis = Array.from(
+    new Set(clientesList.map(c => c.origem).filter(Boolean))
+  );
 
-    return (
+  // Filtro unificado combinando busca por texto e seleção de origem
+  const filteredclientes = clientesList.filter((c) => {
+    const term = searchTerm.toLowerCase();
+    
+    const matchesSearch = !searchTerm || (
       (c.nome || c.name)?.toLowerCase().includes(term) ||
       c.cpf?.toLowerCase().includes(term) ||
       c.cpfCnpj?.toLowerCase().includes(term) ||
@@ -69,6 +74,10 @@ export function App() {
       (c.profissao || c.profession)?.toLowerCase().includes(term) ||
       c.nis?.toLowerCase().includes(term)
     );
+
+    const matchesOrigem = !selectedOrigem || c.origem === selectedOrigem;
+
+    return matchesSearch && matchesOrigem;
   });
 
   return (
@@ -157,15 +166,31 @@ export function App() {
             <span className="font-semibold text-slate-800 capitalize">{activeTab}</span>
           </div>
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-2.5 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Pesquisar cliente ou processo em qualquer tela..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition duration-150"
-            />
+          {/* BARRA DE BUSCA E FILTRO DINÂMICO DE ORIGEM */}
+          <div className="flex items-center gap-3 flex-1 max-w-xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-2.5 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Pesquisar cliente ou processo em qualquer tela..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition duration-150"
+              />
+            </div>
+
+            <select
+              value={selectedOrigem}
+              onChange={(e) => setSelectedOrigem(e.target.value)}
+              className="py-2 px-3 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition duration-150 text-slate-600 shrink-0"
+            >
+              <option value="">Todas as Origens</option>
+              {origensDisponiveis.map((origem: any) => (
+                <option key={origem} value={origem}>
+                  {origem}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
