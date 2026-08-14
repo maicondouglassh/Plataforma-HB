@@ -111,8 +111,8 @@ export function App() {
 
   const totalClientesCount = clientesParaCards.length;
   const clientesAtivosCount = clientesParaCards.filter(c => getClientStatus(c) === 'Ativo').length;
-  const emProspeccaoCount = clientesParaCards.filter(c => getClientStatus(c) === 'Em Prospecção').length;
   const arquivadosCount = clientesParaCards.filter(c => getClientStatus(c) === 'Arquivado').length;
+  const emProspeccaoCount = clientesParaCards.filter(c => getClientStatus(c) === 'Em Prospecção').length;
   const descartadosCount = clientesParaCards.filter(c => getClientStatus(c) === 'Descartado').length;
   const semProcessoCount = clientesParaCards.filter(c => getClientStatus(c) === 'Sem Processo').length;
 
@@ -279,19 +279,7 @@ export function App() {
                   </div>
                 </div>
 
-                {/* Em Prospecção */}
-                <div 
-                  onClick={() => setSelectedStatusCard('Em Prospecção')}
-                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Em Prospecção' ? 'border-amber-600 ring-2 ring-amber-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
-                >
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Em Prospecção</p>
-                    <h3 className="text-2xl font-bold text-amber-600 mt-1">{emProspeccaoCount}</h3>
-                  </div>
-                  <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-                    <Briefcase size={22} />
-                  </div>
-                </div>
+                
 
                 {/* Arquivados */}
                 <div 
@@ -304,6 +292,20 @@ export function App() {
                   </div>
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
                     <Archive size={22} />
+                  </div>
+                </div>
+
+                {/* Em Prospecção */}
+                <div 
+                  onClick={() => setSelectedStatusCard('Em Prospecção')}
+                  className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-sm flex items-center justify-between ${selectedStatusCard === 'Em Prospecção' ? 'border-amber-600 ring-2 ring-amber-600/20' : 'border-slate-200/80 hover:border-slate-300'}`}
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Em Prospecção</p>
+                    <h3 className="text-2xl font-bold text-amber-600 mt-1">{emProspeccaoCount}</h3>
+                  </div>
+                  <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                    <Briefcase size={22} />
                   </div>
                 </div>
 

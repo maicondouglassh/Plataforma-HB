@@ -1,35 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, Plus, Trash2, Phone, Loader2, CheckCircle2 } from 'lucide-react';
 import { api } from '../services/api';
 
 interface ClientModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave?: (clientData: any) => void;
+  onSave?: (clientData?: any) => void;
   onSuccess?: () => void;
   clientToEdit?: any;
 }
 
-export const ClientModal: React.FC<ClientModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  onSave, 
-  onSuccess, 
-  clientToEdit 
-}) => {
+export function ClientModal({ isOpen, onClose, onSave, onSuccess, clientToEdit }: ClientModalProps) {
   const [loadingCep, setLoadingCep] = useState(false);
   const [cpfError, setCpfError] = useState('');
 
-  const [origensList, setOrigensList] = useState<string[]>([
-    'Indicação de Cliente', 
-    'HB - Paraipaba', 
-    'HB - Paracuru', 
-    'WhatsApp'
-  ]);
-  const [novaOrigem, setNovaOrigem] = useState('');
-  const [showAddOrigem, setShowAddOrigem] = useState(false);
-
-  const initialFormState = {
+  const [formData, setFormData] = useState({
     nome: '',
     cpf: '',
     rg: '',
@@ -40,7 +25,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     estadoCivil: '',
     profissao: '',
     email: '',
-    telefone: '',
     origem: '',
     cep: '',
     endereco: '',
@@ -52,26 +36,82 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     senhaGov: '',
     nis: '',
     status: 'Ativo'
-  };
+  });
 
-  const [formData, setFormData] = useState(initialFormState);
+  const [origensList, setOrigensList] = useState<string[]>([
+    'Indicação de Cliente', 
+    'HB - Paraipaba', 
+    'HB - Paracuru', 
+    'WhatsApp',
+    'Natalia Rocha'
+  ]);
+  const [novaOrigem, setNovaOrigem] = useState('');
+  const [showAddOrigem, setShowAddOrigem] = useState(false);
+  const [telefones, setTelefones] = useState<string[]>(['']);
 
   useEffect(() => {
     if (clientToEdit) {
       setFormData({
-        ...initialFormState,
-        ...clientToEdit,
+        nome: clientToEdit.nome || clientToEdit.name || '',
+        cpf: clientToEdit.cpf || clientToEdit.cpfCnpj || '',
+        rg: clientToEdit.rg || '',
+        dataNascimento: clientToEdit.dataNascimento || '',
+        nomeMae: clientToEdit.nomeMae || clientToEdit.motherName || '',
+        genero: clientToEdit.genero || '',
+        nacionalidade: clientToEdit.nacionalidade || 'Brasileira',
+        estadoCivil: clientToEdit.estadoCivil || '',
+        profissao: clientToEdit.profissao || clientToEdit.profession || '',
+        email: clientToEdit.email || '',
+        origem: clientToEdit.origem || clientToEdit.origin || '',
+        cep: clientToEdit.cep || '',
+        endereco: clientToEdit.endereco || '',
+        bairro: clientToEdit.bairro || '',
+        cidade: clientToEdit.cidade || clientToEdit.city || '',
+        estado: clientToEdit.estado || '',
+        nomeRepresentante: clientToEdit.nomeRepresentante || '',
+        cpfRepresentante: clientToEdit.cpfRepresentante || '',
+        senhaGov: clientToEdit.senhaGov || '',
+        nis: clientToEdit.nis || '',
+        status: clientToEdit.status || 'Ativo'
       });
+
+      const campoTelefone = clientToEdit.telefone || clientToEdit.phone || '';
+      if (campoTelefone) {
+        const lista = campoTelefone.split(',').map((t: string) => t.trim()).filter(Boolean);
+        setTelefones(lista.length > 0 ? lista : ['']);
+      } else {
+        setTelefones(['']);
+      }
     } else {
-      setFormData(initialFormState);
+      setFormData({
+        nome: '',
+        cpf: '',
+        rg: '',
+        dataNascimento: '',
+        nomeMae: '',
+        genero: '',
+        nacionalidade: 'Brasileira',
+        estadoCivil: '',
+        profissao: '',
+        email: '',
+        origem: '',
+        cep: '',
+        endereco: '',
+        bairro: '',
+        cidade: '',
+        estado: '',
+        nomeRepresentante: '',
+        cpfRepresentante: '',
+        senhaGov: '',
+        nis: '',
+        status: 'Ativo'
+      });
+      setTelefones(['']);
     }
+    setCpfError('');
   }, [clientToEdit, isOpen]);
 
   if (!isOpen) return null;
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const validarCPF = (cpf: string) => {
     const cleanCpf = cpf.replace(/\D/g, '');
@@ -134,315 +174,412 @@ export const ClientModal: React.FC<ClientModalProps> = ({
     }
   };
 
+  const handleAddPhoneField = () => {
+    setTelefones([...telefones, '']);
+  };
+
+  const handleRemovePhoneField = (index: number) => {
+    const novosTelefones = telefones.filter((_, i) => i !== index);
+    setTelefones(novosTelefones.length > 0 ? novosTelefones : ['']);
+  };
+
+  const handlePhoneChange = (index: number, value: string) => {
+    const novosTelefones = [...telefones];
+    novosTelefones[index] = value;
+    setTelefones(novosTelefones);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const telefonesFormatados = telefones
+      .map(t => t.trim())
+      .filter(Boolean)
+      .join(', ');
+
+    const payload = {
+      ...formData,
+      telefone: telefonesFormatados,
+      cpfCnpj: formData.cpf 
+    };
+
     try {
-      // Identifica se estamos editando e qual o identificador correto
       const clientId = clientToEdit?.id || clientToEdit?._id;
-
       if (clientId) {
-        // Tenta enviar para a rota padrão de atualização. 
-        // Caso seu backend utilize outra estrutura, ajuste aqui (ex: `/clientes` com o id no body)
-        await api.put(`/clientes/${clientId}`, formData);
+        await api.put(`/clientes/${clientId}`, payload);
       } else {
-        await api.post('/clientes', formData);
+        await api.post('/clientes', payload);
       }
-
-      if (onSave) onSave(formData);
+      if (onSave) onSave(payload);
       if (onSuccess) onSuccess();
       onClose();
     } catch (error: any) {
-      console.error("Erro ao salvar cliente:", error);
-      // Exibe detalhe da resposta da API se houver
+      console.error('Erro ao salvar cliente', error);
       const mensagemErro = error.response?.data?.message || error.message || 'Erro desconhecido';
       alert(`Erro ao salvar cliente: ${mensagemErro}`);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-slate-100 my-8">
+        
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div>
-            <h2 className="text-xl font-bold text-gray-800">
-              {clientToEdit ? 'Editar Cadastro de Cliente' : 'Novo Cadastro de Cliente'}
-            </h2>
-            <p className="text-sm text-gray-500">Preencha as informações do cliente de forma unificada.</p>
+            <h3 className="text-lg font-bold text-slate-800">
+              {clientToEdit ? 'Editar Cliente' : 'Novo Cliente'}
+            </h3>
+            <p className="text-xs text-slate-500">Preencha todas as informações do cliente</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-200 transition-colors">
-            <X className="w-5 h-5" />
+          <button 
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition"
+          >
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 flex-1">
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-blue-600 border-b border-blue-100 pb-1">
-              1. Dados Pessoais
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
-                <input
-                  type="text"
-                  name="cpf"
-                  value={formData.cpf}
-                  onChange={handleChange}
-                  onBlur={handleCpfBlur}
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none ${cpfError ? 'border-red-500' : 'border-gray-300'}`}
-                />
-                {cpfError && <span className="text-xs text-red-500 mt-1 block">{cpfError}</span>}
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo *</label>
-                <input
-                  type="text"
-                  name="nome"
-                  value={formData.nome}
-                  onChange={handleChange}
-                  required
-                  placeholder="Ex: Maria da Silva"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">RG</label>
-                <input
-                  type="text"
-                  name="rg"
-                  value={formData.rg}
-                  onChange={handleChange}
-                  placeholder="00.000.000-0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
-                <input
-                  type="date"
-                  name="dataNascimento"
-                  value={formData.dataNascimento}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Gênero</label>
-                <select
-                  name="genero"
-                  value={formData.genero}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="">Selecione...</option>
-                  <option value="Masculino">Masculino</option>
-                  <option value="Feminino">Feminino</option>
-                  <option value="Outro">Outro</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Mãe</label>
-                <input
-                  type="text"
-                  name="nomeMae"
-                  value={formData.nomeMae}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nacionalidade</label>
-                <input
-                  type="text"
-                  name="nacionalidade"
-                  value={formData.nacionalidade}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estado Civil</label>
-                <select
-                  name="estadoCivil"
-                  value={formData.estadoCivil}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="">Selecione...</option>
-                  <option value="Solteiro(a)">Solteiro(a)</option>
-                  <option value="Casado(a)">Casado(a)</option>
-                  <option value="União Estável">União Estável</option>
-                  <option value="Divorciado(a)">Divorciado(a)</option>
-                  <option value="Viúvo(a)">Viúvo(a)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Profissão</label>
-                <input
-                  type="text"
-                  name="profissao"
-                  value={formData.profissao}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            
+            <div className="sm:col-span-3">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nome do Cliente *</label>
+              <input 
+                type="text" 
+                required
+                value={formData.nome}
+                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                placeholder="Nome completo"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CPF</label>
+              <input 
+                type="text" 
+                value={formData.cpf}
+                onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                onBlur={handleCpfBlur}
+                placeholder="000.000.000-00"
+                maxLength={14}
+                className={`w-full px-3.5 py-2.5 text-sm bg-slate-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition ${cpfError ? 'border-red-500' : 'border-slate-200'}`}
+              />
+              {cpfError && <span className="text-xs text-red-500 mt-1 block">{cpfError}</span>}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">RG</label>
+              <input 
+                type="text" 
+                value={formData.rg}
+                onChange={(e) => setFormData({ ...formData, rg: e.target.value })}
+                placeholder="Número do RG"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Data de Nascimento</label>
+              <input 
+                type="date" 
+                value={formData.dataNascimento}
+                onChange={(e) => setFormData({ ...formData, dataNascimento: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nome da Mãe</label>
+              <input 
+                type="text" 
+                value={formData.nomeMae}
+                onChange={(e) => setFormData({ ...formData, nomeMae: e.target.value })}
+                placeholder="Nome completo da mãe"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Gênero</label>
+              <select 
+                value={formData.genero}
+                onChange={(e) => setFormData({ ...formData, genero: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+              >
+                <option value="">Selecione...</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nacionalidade</label>
+              <input 
+                type="text" 
+                value={formData.nacionalidade}
+                onChange={(e) => setFormData({ ...formData, nacionalidade: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Estado Civil</label>
+              <select 
+                value={formData.estadoCivil}
+                onChange={(e) => setFormData({ ...formData, estadoCivil: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+              >
+                <option value="">Selecione...</option>
+                <option value="Solteiro(a)">Solteiro(a)</option>
+                <option value="Casado(a)">Casado(a)</option>
+                <option value="Divorciado(a)">Divorciado(a)</option>
+                <option value="Viúvo(a)">Viúvo(a)</option>
+                <option value="União Estável">União Estável</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Profissão</label>
+              <input 
+                type="text" 
+                value={formData.profissao}
+                onChange={(e) => setFormData({ ...formData, profissao: e.target.value })}
+                placeholder="Ex: Agricultor"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">E-mail</label>
+              <input 
+                type="email" 
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="email@exemplo.com"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-500 uppercase">Origem</label>
+                {!showAddOrigem && (
+                  <button type="button" onClick={() => setShowAddOrigem(true)} className="text-xs text-blue-600 font-semibold hover:underline">
+                    + Nova origem
+                  </button>
+                )}
+              </div>
+              {!showAddOrigem ? (
+                <select 
+                  value={formData.origem}
+                  onChange={(e) => setFormData({ ...formData, origem: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+                >
+                  <option value="">Selecione a origem...</option>
+                  {origensList.map((item, idx) => (
+                    <option key={idx} value={item}>{item}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={novaOrigem}
+                    onChange={(e) => setNovaOrigem(e.target.value)}
+                    placeholder="Nome..."
+                    className="flex-1 px-3 py-2 text-sm bg-slate-50 border border-blue-400 rounded-xl focus:outline-none"
+                  />
+                  <button type="button" onClick={handleAddOrigem} className="px-3 bg-blue-600 text-white rounded-xl text-xs font-semibold">Ok</button>
+                  <button type="button" onClick={() => setShowAddOrigem(false)} className="px-2 bg-slate-200 rounded-xl text-xs font-semibold">X</button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-500 uppercase">CEP</label>
+                {loadingCep && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Buscando...</span>}
+              </div>
+              <input 
+                type="text" 
+                value={formData.cep}
+                onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                onBlur={handleCepBlur}
+                maxLength={9}
+                placeholder="00000-000"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Endereço</label>
+              <input 
+                type="text" 
+                value={formData.endereco}
+                onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                placeholder="Rua, número, complemento"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Bairro</label>
+              <input 
+                type="text" 
+                value={formData.bairro}
+                onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
+                placeholder="Nome do bairro"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Cidade</label>
+              <input 
+                type="text" 
+                value={formData.cidade}
+                onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
+                placeholder="Nome da cidade"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Estado</label>
+              <input 
+                type="text" 
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value.toUpperCase() })}
+                maxLength={2}
+                placeholder="UF"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nome do Representante</label>
+              <input 
+                type="text" 
+                value={formData.nomeRepresentante}
+                onChange={(e) => setFormData({ ...formData, nomeRepresentante: e.target.value })}
+                placeholder="Se houver"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CPF do Representante</label>
+              <input 
+                type="text" 
+                value={formData.cpfRepresentante}
+                onChange={(e) => setFormData({ ...formData, cpfRepresentante: e.target.value })}
+                placeholder="000.000.000-00"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Senha GOV.BR</label>
+              <input 
+                type="text" 
+                value={formData.senhaGov}
+                onChange={(e) => setFormData({ ...formData, senhaGov: e.target.value })}
+                placeholder="Senha"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NIS / PIS / PASEP</label>
+              <input 
+                type="text" 
+                value={formData.nis}
+                onChange={(e) => setFormData({ ...formData, nis: e.target.value })}
+                placeholder="Número do NIS"
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Status</label>
+              <select 
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition text-slate-700"
+              >
+                <option value="Ativo">Ativo</option>
+                <option value="Em Prospecção">Em Prospecção</option>
+                <option value="Arquivado">Arquivado</option>
+                <option value="Descartado">Descartado</option>
+                <option value="Sem Processo">Sem Processo</option>
+              </select>
+            </div>
+
           </div>
 
-          <div className="space-y-4 pt-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-blue-600 border-b border-blue-100 pb-1">
-              2. Contato & Endereço
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Telefone / WhatsApp</label>
-                <input
-                  type="text"
-                  name="telefone"
-                  value={formData.telefone}
-                  onChange={handleChange}
-                  placeholder="(00) 00000-0000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+          {/* Seção de Telefones Ilimitados Dinâmicos */}
+          <div className="border-t border-slate-100 pt-4 mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-xs font-semibold text-slate-500 uppercase">Telefones de Contato</label>
+              <button 
+                type="button"
+                onClick={handleAddPhoneField}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
+              >
+                <Plus size={14} />
+                Adicionar outro telefone
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">Origem</label>
-                  {!showAddOrigem && (
-                    <button type="button" onClick={() => setShowAddOrigem(true)} className="text-xs text-blue-600 font-medium hover:underline">
-                      + Nova origem
+            <div className="space-y-2.5 max-h-36 overflow-y-auto pr-1">
+              {telefones.map((tel, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Phone className="absolute left-3.5 top-3 text-slate-400" size={15} />
+                    <input 
+                      type="text"
+                      value={tel}
+                      onChange={(e) => handlePhoneChange(index, e.target.value)}
+                      placeholder={`Telefone ${index + 1} (Ex: (85) 99999-9999)`}
+                      className="w-full pl-9 pr-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition"
+                    />
+                  </div>
+                  {telefones.length > 1 && (
+                    <button 
+                      type="button"
+                      onClick={() => handleRemovePhoneField(index)}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                      title="Remover telefone"
+                    >
+                      <Trash2 size={16} />
                     </button>
                   )}
                 </div>
-                {!showAddOrigem ? (
-                  <select
-                    name="origem"
-                    value={formData.origem}
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    <option value="">Selecione...</option>
-                    {origensList.map((item, idx) => (
-                      <option key={idx} value={item}>{item}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="flex gap-1">
-                    <input
-                      type="text"
-                      value={novaOrigem}
-                      onChange={(e) => setNovaOrigem(e.target.value)}
-                      placeholder="Nome..."
-                      className="flex-1 px-2 py-2 border border-blue-400 rounded-lg text-sm"
-                    />
-                    <button type="button" onClick={handleAddOrigem} className="px-3 bg-blue-600 text-white rounded-lg text-xs">Ok</button>
-                    <button type="button" onClick={() => setShowAddOrigem(false)} className="px-2 bg-gray-200 rounded-lg text-xs">X</button>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-gray-700">CEP</label>
-                  {loadingCep && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin"/> Buscando...</span>}
-                </div>
-                <input
-                  type="text"
-                  name="cep"
-                  value={formData.cep}
-                  onChange={handleChange}
-                  onBlur={handleCepBlur}
-                  maxLength={9}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-                <input
-                  type="text"
-                  name="endereco"
-                  value={formData.endereco}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
-                <input
-                  type="text"
-                  name="bairro"
-                  value={formData.bairro}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
-                <input
-                  type="text"
-                  name="cidade"
-                  value={formData.cidade}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estado (UF)</label>
-                <input
-                  type="text"
-                  name="estado"
-                  value={formData.estado}
-                  onChange={handleChange}
-                  maxLength={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg uppercase focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
+              ))}
             </div>
           </div>
 
-          <div className="pt-6 border-t border-gray-100 flex items-center justify-end gap-3">
-            <button
+          <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-3 sticky bottom-0 bg-white py-2">
+            <button 
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
             >
               Cancelar
             </button>
-            <button
+            <button 
               type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium flex items-center gap-1.5"
+              className="px-5 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-600/20 transition flex items-center gap-1.5"
             >
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 size={16} />
               {clientToEdit ? 'Atualizar Cadastro' : 'Salvar Cadastro'}
             </button>
           </div>
         </form>
+
       </div>
     </div>
   );
-};
+}
