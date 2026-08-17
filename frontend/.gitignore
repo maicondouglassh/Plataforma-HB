@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Variáveis de ambiente
+.env
+*.env
+backend/.env
+frontend/.env
+
+# Dependências
+node_modules/
+
+# Builds
+dist/
+build/
+
+# Logs
+*.log
