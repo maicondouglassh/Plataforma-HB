@@ -1,4 +1,6 @@
 import { ClientModal } from './components/ClientModal';
+import { Operations } from './pages/Operations';
+import { SettingsPage } from './pages/Settings';
 import { useState, useEffect } from 'react';
 import { Login } from './pages/Login';
 import { 
@@ -12,13 +14,15 @@ import {
   Settings, 
   Plus, 
   Search, 
-  ShieldCheck,
   ChevronRight,
   Archive,
   UserX,
   UserMinus,
   Filter,
-  X
+  X,
+  Handshake,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { api } from './services/api';
 
@@ -33,6 +37,9 @@ export function App() {
   const [filterOrigem, setFilterOrigem] = useState('');
   const [filterCidade, setFilterCidade] = useState('');
   const [activeTab, setActiveTab] = useState('clientes');
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('@PlataformaHB:theme') === 'dark');
+
+  const toggleTheme = () => setDarkMode((current) => { const next = !current; localStorage.setItem('@PlataformaHB:theme', next ? 'dark' : 'light'); return next; });
 
   useEffect(() => {
     const savedUser = localStorage.getItem('@PlataformaHB:user');
@@ -139,9 +146,9 @@ export function App() {
   const hasActiveFunil = filterTexto || filterOrigem || filterCidade || selectedStatusCard;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className={`min-h-screen bg-slate-50 flex ${darkMode ? 'dark-mode' : ''}`}>
       {/* SIDEBAR LATERAL FIXA */}
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800">
+      <aside className="w-64 h-screen sticky top-0 shrink-0 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800">
         <div>
           <div className="p-6 flex items-center gap-3 border-b border-slate-800">
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-600/30">
@@ -155,11 +162,12 @@ export function App() {
 
           <nav className="p-4 space-y-1">
             {[
-              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-              { id: 'clientes', label: 'Clientes', icon: Users, count: clientesList.length },
-              { id: 'processes', label: 'Processos', icon: Briefcase, badge: 'Em breve' },
-              { id: 'documents', label: 'Documentos', icon: FileText },
-              { id: 'settings', label: 'Configurações', icon: Settings },
+              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, count: undefined, badge: undefined },
+              { id: 'clientes', label: 'Clientes', icon: Users, count: clientesList.length, badge: undefined },
+              { id: 'comercial', label: 'Atendimentos', icon: Handshake, count: undefined, badge: undefined },
+              { id: 'processes', label: 'Processos', icon: Briefcase, count: undefined, badge: undefined },
+              { id: 'documents', label: 'Documentos', icon: FileText, count: undefined, badge: undefined },
+              { id: 'settings', label: 'Configurações', icon: Settings, count: undefined, badge: undefined },
             ].map(item => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -205,6 +213,13 @@ export function App() {
               </div>
             </div>
             <button
+              onClick={toggleTheme}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+              title={darkMode ? 'Usar modo claro' : 'Usar modo escuro'}
+            >
+              {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <button
               onClick={handleLogout}
               className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
               title="Sair do sistema"
@@ -225,10 +240,7 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <ShieldCheck size={14} />
-              Supabase Conectado
-            </span>
+            <button onClick={toggleTheme} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" title={darkMode ? 'Usar modo claro' : 'Usar modo escuro'}>{darkMode ? <Sun size={17} /> : <Moon size={17} />}</button>
           </div>
         </header>
 
@@ -451,6 +463,10 @@ export function App() {
               </div>
             </>
           )}
+
+          {activeTab === 'comercial' && <Operations mode="comercial" clients={clientesList} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
+          {activeTab === 'processes' && <Operations mode="processos" clients={clientesList} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
+          {activeTab === 'settings' && <SettingsPage />}
 
           <ClientModal
             isOpen={isModalOpen}

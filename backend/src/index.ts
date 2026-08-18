@@ -4,16 +4,23 @@
   import express from 'express';
   import cors from 'cors';
   import bcrypt from 'bcryptjs';
-  import jwt from 'jsonwebtoken';
-  import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
+import { createOperationsRouter } from './modules/operations/operations.routes';
 
 // 2. VARIÁVEIS DE AMBIENTE
 // Define a porta do servidor e a chave secreta usada para assinar os tokens JWT.
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secreto_alterar_em_producao';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+// O SDK do Supabase recebe a URL-raiz do projeto e acrescenta /rest/v1 internamente.
+// Aceita também instalações antigas que tenham salvo a URL da API completa no .env.
+const SUPABASE_URL = (process.env.SUPABASE_URL || '')
+  .replace(/\/rest\/v1\/?$/, '')
+  .replace(/\/$/, '');
+// A API é o único acesso ao banco. A service role fica somente no .env do backend
+// e permite que a autenticação JWT própria da Plataforma HB controle as rotas.
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '';
 
 // Validação simples para garantir que a URL do Supabase está correta antes de iniciar.
 if (!SUPABASE_URL.startsWith('http')) {
@@ -31,7 +38,10 @@ const app = express();
 // CORREÇÃO APLICADA AQUI: Uso correto do pacote 'cors' para evitar o aninhamento de rotas
 // e garantir a segurança e permissão de acesso do frontend (Vite).
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'], // Permite acesso do frontend
+  origin: (origin, callback) => {
+    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):5173$/.test(origin)) return callback(null, true);
+    callback(new Error('Origem não permitida pelo CORS'));
+  },
   credentials: true, // Permite envio de cookies/tokens
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
@@ -39,6 +49,7 @@ app.use(cors({
 
 // Permite que o Express entenda requisições com o corpo (body) no formato JSON.
 app.use(express.json());
+app.use('/api/operacional', createOperationsRouter(supabase));
 
 // 5. MIDDLEWARE DE AUTENTICAÇÃO
 // Função que intercepta as rotas protegidas para verificar se o usuário enviou um Token JWT válido.

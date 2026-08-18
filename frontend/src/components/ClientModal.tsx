@@ -7,7 +7,6 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
-  Search,
 } from 'lucide-react';
 import { api } from '../services/api';
 

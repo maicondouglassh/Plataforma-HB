@@ -8,3 +8,14 @@
     @apply bg-slate-50 text-slate-900 font-sans antialiased;
   }
 }
+
+/* Tema opcional: preserva os componentes azuis e troca as superfícies claras. */
+.dark-mode, .dark-mode.bg-slate-50 { color-scheme: dark; background-color: #0b1220 !important; color: #e2e8f0; }
+.dark-mode .bg-slate-50 { background-color: #0b1220 !important; }
+.dark-mode .bg-white, .dark-mode .bg-slate-50\/50 { background-color: #172033 !important; }
+.dark-mode .bg-slate-100 { background-color: #1e293b !important; }
+.dark-mode .text-slate-900, .dark-mode .text-slate-800 { color: #e2e8f0 !important; }
+.dark-mode .text-slate-700, .dark-mode .text-slate-600, .dark-mode .text-slate-500 { color: #cbd5e1 !important; }
+.dark-mode .border-slate-100, .dark-mode .border-slate-200 { border-color: #334155 !important; }
+.dark-mode input, .dark-mode select, .dark-mode textarea { background-color: #1e293b !important; color: #e2e8f0 !important; border-color: #475569 !important; }
+.dark-mode .hover\:bg-slate-50:hover, .dark-mode .hover\:bg-slate-100:hover { background-color: #26334a !important; }

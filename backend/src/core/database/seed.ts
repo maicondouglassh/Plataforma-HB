@@ -13,7 +13,6 @@ async function main() {
     name: 'Administrador HB',
     email: 'admin@hb.com',
     passwordHash: passwordHash,
-    active: true,
   });
 
   console.log('✅ Usuário administrador criado com sucesso!');
