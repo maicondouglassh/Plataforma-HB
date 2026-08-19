@@ -37,15 +37,24 @@ const app = express();
 // 4. CONFIGURAÇÃO DE MIDDLEWARES GLOBAIS
 // CORREÇÃO APLICADA AQUI: Uso correto do pacote 'cors' para evitar o aninhamento de rotas
 // e garantir a segurança e permissão de acesso do frontend (Vite).
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):5173$/.test(origin)) return callback(null, true);
+    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):(5173|5174)$/.test(origin)) return callback(null, true);
     callback(new Error('Origem não permitida pelo CORS'));
   },
   credentials: true, // Permite envio de cookies/tokens
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization']
-}));
+};
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // Permite que o Express entenda requisições com o corpo (body) no formato JSON.
 app.use(express.json());
@@ -218,9 +227,23 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 // Listar todos os clientes
 app.get('/api/clientes', authenticateToken, async (req, res) => {
   try {
-    const { data: listaClientes, error } = await supabase.from('clientes').select('*');
-    if (error) throw error;
-    return res.json(listaClientes);
+    const pageSize = 1000;
+    const listaClientes: any[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from('clientes').select('*').order('nome', { ascending: true }).range(from, from + pageSize - 1);
+      if (error) throw error;
+      listaClientes.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    const processos: any[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from('processos').select('cliente_id').range(from, from + pageSize - 1);
+      if (error) throw error;
+      processos.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+    const clientesComProcesso = new Set(processos.map((processo) => String(processo.cliente_id)));
+    return res.json(listaClientes.map((cliente) => ({ ...cliente, hasProcess: clientesComProcesso.has(String(cliente.id)) })));
   } catch (error: any) {
     console.error('Erro ao buscar clientes:', error);
     return res.status(500).json({ error: 'Erro ao buscar clientes.', details: error.message });
@@ -827,6 +850,29 @@ app.put(
     }
   }
 );
+
+// Excluir um cliente - permitido apenas para administrador e programador.
+app.delete('/api/clientes/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const role = String(req.user?.roleId || '').toLowerCase();
+    let permitted = ['admin', 'administrador', 'programador', 'programmer', 'developer', '1', '2', '3'].includes(role);
+    if (!permitted && req.user?.id) {
+      const { data: profile } = await supabase.from('usuario_perfis').select('tipo_acesso').eq('user_id', req.user.id).maybeSingle();
+      permitted = ['administrador', 'programador'].includes(String(profile?.tipo_acesso || '').toLowerCase());
+    }
+    if (!permitted) return res.status(403).json({ error: 'Apenas administradores e programadores podem excluir clientes.' });
+    const clientId = req.params.id;
+    await supabase.from('processos').update({ atendimento_id: null }).eq('cliente_id', clientId);
+    await supabase.from('tarefas').delete().eq('cliente_id', clientId);
+    await supabase.from('atendimentos').delete().eq('cliente_id', clientId);
+    await supabase.from('processos').delete().eq('cliente_id', clientId);
+    const { error } = await supabase.from('clientes').delete().eq('id', clientId);
+    if (error) throw error;
+    return res.json({ message: 'Cliente excluído com sucesso.' });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Não foi possível excluir o cliente.', details: error.message });
+  }
+});
 
 // Atualizar um cliente específico
 app.put('/api/clientes/:id', authenticateToken, async (req, res) => {

@@ -76,6 +76,9 @@ interface ClientModalProps {
   ) => void;
   onSuccess?: () => void;
   clientToEdit?: Cliente;
+  onNewProcess?: (clientId: string) => void;
+  canDelete?: boolean;
+  onDelete?: (clientId: string) => Promise<void>;
 }
 
 const FORM_INICIAL: ClienteFormData = {
@@ -108,9 +111,13 @@ export function ClientModal({
   onSave,
   onSuccess,
   clientToEdit,
+  onNewProcess,
+  canDelete = false,
+  onDelete,
 }: ClientModalProps) {
   const [loadingCep, setLoadingCep] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
 
   const [cpfError, setCpfError] = useState('');
   const [cpfDuplicado, setCpfDuplicado] = useState<ClienteSemelhante | null>(
@@ -202,6 +209,14 @@ export function ClientModal({
     setShowAddOrigem(false);
     setNovaOrigem('');
   }, [clientToEdit, isOpen]);
+
+  const handleDelete = async () => {
+    if (!clientToEdit?.id || !onDelete || !window.confirm('Excluir este cliente e os registros vinculados? Esta ação não pode ser desfeita.')) return;
+    setExcluindo(true);
+    try { await onDelete(clientToEdit.id); onClose(); }
+    catch (error: any) { window.alert(error.response?.data?.error || 'Não foi possível excluir o cliente.'); }
+    finally { setExcluindo(false); }
+  };
 
   if (!isOpen) {
     return null;
@@ -1818,6 +1833,16 @@ export function ClientModal({
           {/* AÇÕES */}
 
           <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-3 sticky bottom-0 bg-white py-2">
+            {clientToEdit?.id && onNewProcess && (
+              <button
+                type="button"
+                onClick={() => onNewProcess(clientToEdit.id!)}
+                className="px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition"
+              >
+                Cadastrar processo
+              </button>
+            )}
+            {clientToEdit?.id && canDelete && onDelete && <button type="button" onClick={() => void handleDelete()} disabled={salvando || excluindo} className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-xl transition disabled:opacity-50">{excluindo ? 'Excluindo...' : 'Excluir cliente'}</button>}
             <button
               type="button"
               onClick={onClose}

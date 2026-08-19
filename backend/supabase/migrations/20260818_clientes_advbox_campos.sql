@@ -1,0 +1,13 @@
+alter table clientes add column if not exists rg text;
+alter table clientes add column if not exists genero text check (genero in ('masculino','feminino','outro'));
+alter table clientes add column if not exists estado_civil text;
+alter table clientes add column if not exists profissao text;
+alter table clientes add column if not exists rua_numero text;
+alter table clientes add column if not exists cep text;
+alter table clientes add column if not exists bairro text;
+alter table clientes add column if not exists cidade text;
+alter table clientes add column if not exists estado text;
+alter table clientes add column if not exists pais text;
+alter table clientes add column if not exists pis_nis_nit text;
+alter table clientes add column if not exists advbox_id text unique;
+alter table clientes add column if not exists advbox_created_at timestamptz;

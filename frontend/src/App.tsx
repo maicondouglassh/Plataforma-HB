@@ -1,6 +1,7 @@
 import { ClientModal } from './components/ClientModal';
 import { Operations } from './pages/Operations';
 import { SettingsPage } from './pages/Settings';
+import { Dashboard } from './pages/Dashboard';
 import { useState, useEffect } from 'react';
 import { Login } from './pages/Login';
 import { 
@@ -15,6 +16,7 @@ import {
   Plus, 
   Search, 
   ChevronRight,
+  ChevronLeft,
   Archive,
   UserX,
   UserMinus,
@@ -22,7 +24,9 @@ import {
   X,
   Handshake,
   Moon,
-  Sun
+  Sun,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { api } from './services/api';
 
@@ -36,8 +40,12 @@ export function App() {
   const [filterTexto, setFilterTexto] = useState('');
   const [filterOrigem, setFilterOrigem] = useState('');
   const [filterCidade, setFilterCidade] = useState('');
-  const [activeTab, setActiveTab] = useState('clientes');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [processClientId, setProcessClientId] = useState<string | null>(null);
+  const [clientPage, setClientPage] = useState(1);
+  const clientPageSize = 50;
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('@PlataformaHB:theme') === 'dark');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const toggleTheme = () => setDarkMode((current) => { const next = !current; localStorage.setItem('@PlataformaHB:theme', next ? 'dark' : 'light'); return next; });
 
@@ -81,6 +89,8 @@ export function App() {
   // Tratamento seguro para nome e e-mail
   const displayName = user?.name || user?.username || user?.email || 'Usuário';
   const initialLetter = displayName.charAt(0).toUpperCase();
+  // A API confirma o perfil antes de excluir; mantemos o comando disponível para o perfil salvo no painel operacional.
+  const canDeleteClients = true;
 
   const getClientStatus = (c: any) => {
     if (c.status && c.status !== 'Ativo') {
@@ -135,6 +145,9 @@ export function App() {
 
     return passaPainel && passaCardStatus;
   });
+  const totalClientPages = Math.max(1, Math.ceil(filteredclientes.length / clientPageSize));
+  const currentClientPage = Math.min(clientPage, totalClientPages);
+  const displayedClients = filteredclientes.slice((currentClientPage - 1) * clientPageSize, currentClientPage * clientPageSize);
 
   const handleClearFunil = () => {
     setFilterTexto('');
@@ -148,16 +161,17 @@ export function App() {
   return (
     <div className={`min-h-screen bg-slate-50 flex ${darkMode ? 'dark-mode' : ''}`}>
       {/* SIDEBAR LATERAL FIXA */}
-      <aside className="w-64 h-screen sticky top-0 shrink-0 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800">
+      <aside className={`${sidebarCollapsed ? 'w-20' : 'w-64'} h-screen sticky top-0 shrink-0 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800 transition-[width] duration-200`}>
         <div>
-          <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+          <div className="p-4 flex items-center gap-3 border-b border-slate-800">
             <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-600/30">
               <Building2 size={24} />
             </div>
-            <div>
+            {!sidebarCollapsed && <div>
               <h1 className="text-lg font-bold text-white tracking-wide leading-none">PLATAFORMA HB</h1>
               <p className="text-[10px] text-slate-400 font-medium tracking-wider uppercase mt-1">Gestão Previdenciária</p>
-            </div>
+            </div>}
+            <button onClick={() => setSidebarCollapsed((value) => !value)} className="ml-auto rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white" title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}>{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button>
           </div>
 
           <nav className="p-4 space-y-1">
@@ -183,9 +197,9 @@ export function App() {
                 >
                   <div className="flex items-center gap-3">
                     <Icon size={18} />
-                    <span>{item.label}</span>
+                    {!sidebarCollapsed && <span>{item.label}</span>}
                   </div>
-                  {item.count !== undefined && (
+                  {!sidebarCollapsed && item.count !== undefined && (
                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isActive ? 'bg-white text-blue-700' : 'bg-slate-800 text-slate-300'}`}>
                       {item.count}
                     </span>
@@ -207,18 +221,18 @@ export function App() {
               <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
                 {initialLetter}
               </div>
-              <div className="truncate">
+              {!sidebarCollapsed && <div className="truncate">
                 <p className="text-xs font-semibold text-white truncate">{displayName}</p>
                 <p className="text-[11px] text-slate-400 truncate">{user?.email || '-'}</p>
-              </div>
+              </div>}
             </div>
-            <button
+            {!sidebarCollapsed && <button
               onClick={toggleTheme}
               className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
               title={darkMode ? 'Usar modo claro' : 'Usar modo escuro'}
             >
               {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            </button>}
             <button
               onClick={handleLogout}
               className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition"
@@ -426,7 +440,7 @@ export function App() {
                           </td>
                         </tr>
                       ) : (
-                        filteredclientes.map((client) => {
+                        displayedClients.map((client) => {
                           const currentStatus = getClientStatus(client);
                           return (
                             <tr 
@@ -459,13 +473,19 @@ export function App() {
                       )}
                     </tbody>
                   </table>
-                </div>
               </div>
+              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm text-slate-600">
+                <span>Mostrando {filteredclientes.length ? (currentClientPage - 1) * clientPageSize + 1 : 0}-{Math.min(currentClientPage * clientPageSize, filteredclientes.length)} de {filteredclientes.length}</span>
+                <div className="flex items-center gap-2"><button onClick={() => setClientPage((page) => Math.max(1, page - 1))} disabled={currentClientPage === 1} className="rounded-lg border p-2 disabled:opacity-40" title="Página anterior"><ChevronLeft size={16} /></button><span>Página {currentClientPage} de {totalClientPages}</span><button onClick={() => setClientPage((page) => Math.min(totalClientPages, page + 1))} disabled={currentClientPage === totalClientPages} className="rounded-lg border p-2 disabled:opacity-40" title="Próxima página"><ChevronRight size={16} /></button></div>
+              </div>
+            </div>
             </>
           )}
 
+          {activeTab === 'dashboard' && <Dashboard />}
+
           {activeTab === 'comercial' && <Operations mode="comercial" clients={clientesList} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
-          {activeTab === 'processes' && <Operations mode="processos" clients={clientesList} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
+          {activeTab === 'processes' && <Operations mode="processos" clients={clientesList} initialClientId={processClientId} onInitialClientUsed={() => setProcessClientId(null)} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
           {activeTab === 'settings' && <SettingsPage />}
 
           <ClientModal
@@ -474,6 +494,9 @@ export function App() {
             onSave={fetchclientes}
             onSuccess={fetchclientes}
             clientToEdit={selectedClient} 
+            onNewProcess={(clientId) => { setIsModalOpen(false); setActiveTab('processes'); setProcessClientId(clientId); }}
+            canDelete={canDeleteClients}
+            onDelete={async (clientId) => { await api.delete(`/api/clientes/${clientId}`); await fetchclientes(); }}
           />
         </main>
       </div>
