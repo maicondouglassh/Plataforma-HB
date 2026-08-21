@@ -38,8 +38,8 @@ const app = express();
 // CORREÇÃO APLICADA AQUI: Uso correto do pacote 'cors' para evitar o aninhamento de rotas
 // e garantir a segurança e permissão de acesso do frontend (Vite).
 const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):(5173|5174)$/.test(origin)) return callback(null, true);
+  origin: (origin: string | undefined, callback: (error: Error | null, allowed?: boolean) => void) => {
+    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) return callback(null, true);
     callback(new Error('Origem não permitida pelo CORS'));
   },
   credentials: true, // Permite envio de cookies/tokens
@@ -211,9 +211,16 @@ app.get('/api/auth/me', authenticateToken, (req: any, res) => {
 // Busca todos os usuários do sistema. Requer estar autenticado.
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
-    const { data: allUsers, error } = await supabase
-      .from('users')
-      .select('userid, username, useremail, sectorid, roleid'); // Traz apenas colunas seguras (exclui senhas).
+    const [usersResult, profilesResult] = await Promise.all([
+      supabase.from('users').select('userid, username, useremail, sectorid, roleid'),
+      supabase.from('usuario_perfis').select('user_id, nome, email, ativo'),
+    ]);
+    const error = usersResult.error || profilesResult.error;
+    const profilesByUserId = new Map((profilesResult.data || []).map((profile: any) => [String(profile.user_id), profile]));
+    const allUsers = (usersResult.data || []).map((user: any) => {
+      const profile: any = profilesByUserId.get(String(user.userid));
+      return { ...user, name: profile?.nome || user.username, username: profile?.nome || user.username, email: profile?.email || user.useremail, ativo: profile?.ativo !== false };
+    });
 
     if (error) throw error;
     res.json(allUsers);

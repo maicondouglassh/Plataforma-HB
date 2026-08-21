@@ -2,6 +2,7 @@ import { ClientModal } from './components/ClientModal';
 import { Operations } from './pages/Operations';
 import { SettingsPage } from './pages/Settings';
 import { Dashboard } from './pages/Dashboard';
+import { TaskControl } from './pages/TaskControl';
 import { useState, useEffect } from 'react';
 import { Login } from './pages/Login';
 import { 
@@ -17,6 +18,7 @@ import {
   Search, 
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Archive,
   UserX,
   UserMinus,
@@ -26,7 +28,8 @@ import {
   Moon,
   Sun,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  ListTodo
 } from 'lucide-react';
 import { api } from './services/api';
 
@@ -42,6 +45,9 @@ export function App() {
   const [filterCidade, setFilterCidade] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [processClientId, setProcessClientId] = useState<string | null>(null);
+  const [processToOpen, setProcessToOpen] = useState<string | null>(null);
+  const [clientProcesses, setClientProcesses] = useState<any[]>([]);
+  const [openClientProcesses, setOpenClientProcesses] = useState<string | null>(null);
   const [clientPage, setClientPage] = useState(1);
   const clientPageSize = 50;
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('@PlataformaHB:theme') === 'dark');
@@ -64,8 +70,12 @@ export function App() {
 
   const fetchclientes = async () => {
     try {
-      const response = await api.get('/api/clientes');
-      setclientesList(Array.isArray(response.data) ? response.data : []);
+      const [clientsResponse, processesResponse] = await Promise.all([
+        api.get('/api/clientes'),
+        api.get('/api/operacional/processos'),
+      ]);
+      setclientesList(Array.isArray(clientsResponse.data) ? clientsResponse.data : []);
+      setClientProcesses(Array.isArray(processesResponse.data) ? processesResponse.data : []);
     } catch (err) {
       console.error('Erro ao buscar clientes:', err);
     }
@@ -90,7 +100,7 @@ export function App() {
   const displayName = user?.name || user?.username || user?.email || 'Usuário';
   const initialLetter = displayName.charAt(0).toUpperCase();
   // A API confirma o perfil antes de excluir; mantemos o comando disponível para o perfil salvo no painel operacional.
-  const canDeleteClients = true;
+  const canDeleteClients = [1, 2].includes(Number(user?.roleId));
 
   const getClientStatus = (c: any) => {
     if (c.status && c.status !== 'Ativo') {
@@ -177,6 +187,7 @@ export function App() {
           <nav className="p-4 space-y-1">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, count: undefined, badge: undefined },
+              { id: 'tasks', label: 'Tarefas', icon: ListTodo, count: undefined, badge: undefined },
               { id: 'clientes', label: 'Clientes', icon: Users, count: clientesList.length, badge: undefined },
               { id: 'comercial', label: 'Atendimentos', icon: Handshake, count: undefined, badge: undefined },
               { id: 'processes', label: 'Processos', icon: Briefcase, count: undefined, badge: undefined },
@@ -448,8 +459,11 @@ export function App() {
                               onClick={() => { setSelectedClient(client); setIsModalOpen(true); }}
                               className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
                             >
-                              <td className="py-4 px-6 font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
-                                {client.nome || client.name || '-'}
+                              <td className="relative py-4 px-6 font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                                <div className="flex items-center gap-2">
+                                  <span>{client.nome || client.name || '-'}</span>
+                                  {(() => { const linked = clientProcesses.filter((process) => String(process.cliente_id) === String(client.id || client._id)); if (!linked.length) return null; const open = openClientProcesses === String(client.id || client._id); return <div className="relative"><button onClick={(event) => { event.stopPropagation(); setOpenClientProcesses(open ? null : String(client.id || client._id)); }} className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700" title="Processos vinculados">Processos ({linked.length})<ChevronDown size={14} /></button>{open && <div onClick={(event) => event.stopPropagation()} className="absolute left-0 top-full z-30 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">{linked.map((process) => <button key={process.id} onClick={() => { setOpenClientProcesses(null); setProcessToOpen(process.id); setActiveTab('processes'); }} className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-slate-50"><b className="block text-slate-800">{process.tipo_beneficio || 'Processo sem benefício'}</b><span className="text-slate-500">{process.numero_protocolo || process.numero_cnj || 'Sem número'}</span></button>)}</div>}</div>; })()}
+                                </div>
                               </td>
                               <td className="py-4 px-6 text-slate-600 font-mono text-xs">
                                 {client.cpf || client.cpfCnpj || '-'}
@@ -483,9 +497,10 @@ export function App() {
           )}
 
           {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'tasks' && <TaskControl clients={clientesList} currentUser={user} onOpenClient={(client) => { setSelectedClient(client); setIsModalOpen(true); }} onOpenProcess={(processId) => { setProcessToOpen(processId); setActiveTab('processes'); }} />}
 
           {activeTab === 'comercial' && <Operations mode="comercial" clients={clientesList} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
-          {activeTab === 'processes' && <Operations mode="processos" clients={clientesList} initialClientId={processClientId} onInitialClientUsed={() => setProcessClientId(null)} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
+          {activeTab === 'processes' && <Operations mode="processos" clients={clientesList} initialClientId={processClientId} initialProcessId={processToOpen} onInitialClientUsed={() => setProcessClientId(null)} onInitialProcessUsed={() => setProcessToOpen(null)} onNewClient={() => { setSelectedClient(null); setIsModalOpen(true); }} />}
           {activeTab === 'settings' && <SettingsPage />}
 
           <ClientModal

@@ -33,7 +33,7 @@ function advboxCustomerCpf(item: any, customerId: string): string {
 }
 
 function advboxProcessCategory(item: any): 'administrativo' | 'judicial' | 'financeiro' | 'arquivado' | 'atendimento' {
-  const step = advboxStageIdentity(item).step.toLowerCase();
+  const identity = advboxStageIdentity(item); const step = `${identity.step} ${identity.stage}`.toLowerCase();
   if (/arquiv/.test(step)) return 'arquivado';
   if (/negocia|marketing|comercial|atendimento/.test(step)) return 'atendimento';
   if (/recurs|execu[cç][aã]o|judicial|audi[eê]ncia|julgamento/.test(step)) return 'judicial';
@@ -150,6 +150,18 @@ export function createOperationsRouter(supabase: SupabaseClient) {
   operationsRouter.get('/configuracoes/painel/:tipo', async (req, res) => {
     const tables: Record<string, string> = { usuarios: 'usuario_perfis', unidades: 'unidades', tipos_processo: 'tipos_processo', origens: 'origens', tarefas: 'configuracoes_operacionais', tags: 'tags', etapas: 'workflow_stages' };
     const table = tables[req.params.tipo]; if (!table) return res.status(400).json({ error: 'Cadastro inválido.' });
+    if (req.params.tipo === 'usuarios') {
+      const [profiles, users] = await Promise.all([
+        supabase.from('usuario_perfis').select('*').order('nome'),
+        supabase.from('users').select('userid, username, useremail, roleid'),
+      ]);
+      if (profiles.error || users.error) return res.status(500).json({ error: profiles.error?.message || users.error?.message });
+      const loginById = new Map((users.data || []).map((user: any) => [String(user.userid), user]));
+      return res.json((profiles.data || []).map((profile: any) => {
+        const login: any = loginById.get(String(profile.user_id));
+        return { ...profile, nome: login?.username || profile.nome, email: login?.useremail || profile.email, roleid: login?.roleid };
+      }));
+    }
     let query: any = supabase.from(table).select('*');
     if (req.params.tipo !== 'usuarios') query = query.order('created_at', { ascending: false });
     if (req.params.tipo === 'tarefas') query = query.eq('categoria', 'tarefa');
@@ -157,23 +169,26 @@ export function createOperationsRouter(supabase: SupabaseClient) {
   });
 
   operationsRouter.post('/configuracoes/painel/:tipo', async (req: any, res) => {
-    if (!canManageConfiguration(req.user?.roleId)) return res.status(403).json({ error: 'Apenas administradores e programadores podem alterar cadastros.' });
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Apenas administradores e programadores podem alterar cadastros.' });
     const type = req.params.tipo; const body = req.body;
     if (type === 'usuarios') {
       const nome = required(body.nome); const email = required(body.email); const senha = required(body.senha) || 'Hb#123456';
       if (!nome || !email) return res.status(400).json({ error: 'Nome e e-mail são obrigatórios.' });
+      const tipoAcesso = ['administrador', 'programador', 'colaborador'].includes(body.tipoAcesso) ? body.tipoAcesso : 'colaborador';
+      const roleId = tipoAcesso === 'administrador' ? 1 : tipoAcesso === 'programador' ? 2 : 3;
       const passwordHash = await bcrypt.hash(senha, 10);
-      const { data: createdUser, error: userError } = await supabase.from('users').insert({ username: nome, useremail: email, userpass: passwordHash }).select('userid').single();
+      const { data: createdUser, error: userError } = await supabase.from('users').insert({ username: nome, useremail: email, userpass: passwordHash, roleid: roleId }).select('userid').single();
       if (userError) return res.status(400).json({ error: userError.message });
       const userId = String(createdUser.userid);
-      const { data, error } = await supabase.from('usuario_perfis').insert({ user_id: userId, nome, email, cpf: body.cpf || null, tipo_acesso: body.tipoAcesso || 'colaborador', cargo: body.cargo || null, telefone: body.telefone || null, data_nascimento: body.dataNascimento || null, foto_data: body.fotoData || null, unidade_id: body.unidadeId || null, ativo: body.ativo !== false }).select().single();
-      if (error) return res.status(400).json({ error: error.message }); return res.status(201).json(data);
+      const { data, error } = await supabase.from('usuario_perfis').insert({ user_id: userId, nome, email, cpf: body.cpf || null, tipo_acesso: tipoAcesso, cargo: body.cargo || null, telefone: body.telefone || null, data_nascimento: body.dataNascimento || null, endereco: body.endereco || null, foto_data: body.fotoData || null, unidade_id: body.unidadeId || null, ativo: body.ativo !== false }).select().single();
+      if (error) { await supabase.from('users').delete().eq('userid', userId); return res.status(400).json({ error: error.message }); }
+      return res.status(201).json(data);
     }
     const payloads: Record<string, { table: string; payload: any }> = {
       unidades: { table: 'unidades', payload: { titulo: required(body.titulo), endereco: body.endereco || null, inicio_unidade: body.inicioUnidade || null, ativo: body.ativo !== false } },
       tipos_processo: { table: 'tipos_processo', payload: { titulo: required(body.titulo), ativo: body.ativo !== false } },
       origens: { table: 'origens', payload: { nome: required(body.nome), telefones: Array.isArray(body.telefones) ? body.telefones : String(body.telefones || '').split(',').map((phone) => phone.trim()).filter(Boolean), ativo: body.ativo !== false } },
-      tarefas: { table: 'configuracoes_operacionais', payload: { categoria: 'tarefa', nome: required(body.titulo), tipo_evento: body.tipo === 'evento' ? 'evento' : 'tarefa', ativo: body.ativo !== false } },
+      tarefas: { table: 'configuracoes_operacionais', payload: { categoria: 'tarefa', nome: required(body.titulo), esferas: Array.isArray(body.esferas) ? body.esferas : [], tipo_evento: body.tipo === 'evento' ? 'evento' : 'tarefa', ativo: body.ativo !== false } },
       tags: { table: 'tags', payload: { name: required(body.nome), color: body.cor || '#2563eb', uso: Array.isArray(body.uso) ? body.uso : [], active: body.ativo !== false } },
       etapas: { table: 'workflow_stages', payload: { module: 'processos', grupo: body.grupo || 'Administrativo', name: required(body.titulo), stage_key: required(body.titulo)?.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), position: Number(body.position || 0), limite_dias: body.limiteDias ? Number(body.limiteDias) : null, active: body.ativo !== false } },
     };
@@ -182,12 +197,60 @@ export function createOperationsRouter(supabase: SupabaseClient) {
   });
 
   operationsRouter.patch('/configuracoes/painel/:tipo/:id', async (req: any, res) => {
-    if (!canManageConfiguration(req.user?.roleId)) return res.status(403).json({ error: 'Apenas administradores e programadores podem alterar cadastros.' });
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Apenas administradores e programadores podem alterar cadastros.' });
     const tables: Record<string, string> = { unidades: 'unidades', tipos_processo: 'tipos_processo', origens: 'origens', tarefas: 'configuracoes_operacionais', tags: 'tags', etapas: 'workflow_stages', usuarios: 'usuario_perfis' }; const table = tables[req.params.tipo]; if (!table) return res.status(400).json({ error: 'Cadastro inválido.' });
+    if (req.params.tipo === 'usuarios') {
+      const body = req.body || {}; const tipoAcesso = ['administrador', 'programador', 'colaborador'].includes(body.tipoAcesso) ? body.tipoAcesso : undefined;
+      const { data: currentProfile, error: currentProfileError } = await supabase.from('usuario_perfis').select('nome').eq('user_id', req.params.id).maybeSingle();
+      if (currentProfileError) return res.status(400).json({ error: currentProfileError.message });
+      const profileChanges: any = {};
+      for (const key of ['nome', 'email', 'cpf', 'cargo', 'telefone', 'endereco']) if (key in body) profileChanges[key] = body[key] || null;
+      if (tipoAcesso) profileChanges.tipo_acesso = tipoAcesso;
+      if ('unidadeId' in body) profileChanges.unidade_id = body.unidadeId || null;
+      if ('dataNascimento' in body) profileChanges.data_nascimento = body.dataNascimento || null;
+      if ('fotoData' in body) profileChanges.foto_data = body.fotoData || null;
+      if ('ativo' in body) profileChanges.ativo = body.ativo !== false;
+      const userChanges: any = {};
+      if ('nome' in body) userChanges.username = body.nome;
+      if ('email' in body) userChanges.useremail = body.email;
+      if (body.senha) userChanges.userpass = await bcrypt.hash(String(body.senha), 10);
+      if (tipoAcesso) userChanges.roleid = tipoAcesso === 'administrador' ? 1 : tipoAcesso === 'programador' ? 2 : 3;
+      if (Object.keys(userChanges).length) { const { error: userError } = await supabase.from('users').update(userChanges).eq('userid', req.params.id); if (userError) return res.status(400).json({ error: userError.message }); }
+      const { data, error } = await supabase.from('usuario_perfis').upsert({ user_id: String(req.params.id), nome: body.nome || currentProfile?.nome || 'Usuário', ...profileChanges }, { onConflict: 'user_id' }).select().single();
+      if (error) return res.status(400).json({ error: error.message });
+      const oldName = String(currentProfile?.nome || '').trim(); const newName = String(body.nome || '').trim();
+      if (oldName && newName && oldName.localeCompare(newName, 'pt-BR', { sensitivity: 'accent' }) !== 0) {
+        const { data: assignedTasks, error: tasksError } = await supabase.from('tarefas').select('id, responsavel').ilike('responsavel', `%${oldName}%`);
+        if (tasksError) return res.status(400).json({ error: tasksError.message });
+        const normalizedOldName = oldName.toLocaleLowerCase('pt-BR');
+        const updates = (assignedTasks || []).map((task: any) => {
+          const responsible = String(task.responsavel || '').split(',').map((name) => name.trim()).map((name) => name.toLocaleLowerCase('pt-BR') === normalizedOldName ? newName : name).join(', ');
+          return supabase.from('tarefas').update({ responsavel: responsible }).eq('id', task.id);
+        });
+        await Promise.all(updates);
+      }
+      return res.json(data);
+    }
     const changes: any = { ...req.body }; if (['tags', 'etapas'].includes(req.params.tipo) && 'ativo' in changes) { changes.active = changes.ativo; delete changes.ativo; }
-    if (req.params.tipo === 'usuarios') { if ('tipoAcesso' in changes) { changes.tipo_acesso = changes.tipoAcesso; delete changes.tipoAcesso; } if ('unidadeId' in changes) { changes.unidade_id = changes.unidadeId; delete changes.unidadeId; } if ('dataNascimento' in changes) { changes.data_nascimento = changes.dataNascimento; delete changes.dataNascimento; } if ('fotoData' in changes) { changes.foto_data = changes.fotoData; delete changes.fotoData; } }
+    if (req.params.tipo === 'tags' && 'cor' in changes) { changes.color = changes.cor; delete changes.cor; }
+    if (req.params.tipo === 'etapas') { if ('nome' in changes) { changes.name = changes.nome; delete changes.nome; } if ('esfera' in changes) { changes.categoria = changes.esfera; changes.grupo = changes.esfera; delete changes.esfera; } }
+    if (['unidades', 'tipos_processo'].includes(req.params.tipo) && 'nome' in changes) { changes.titulo = changes.nome; delete changes.nome; }
+    if (req.params.tipo === 'origens' && 'telefone' in changes) { changes.telefones = String(changes.telefone || '').split(',').map((phone) => phone.trim()).filter(Boolean); delete changes.telefone; }
     delete changes.senha; delete changes.id; delete changes.user_id;
     const { data, error } = await supabase.from(table).update(changes).eq(req.params.tipo === 'usuarios' ? 'user_id' : 'id', req.params.id).select().single(); if (error) return res.status(400).json({ error: error.message }); return res.json(data);
+  });
+
+  operationsRouter.delete('/configuracoes/painel/usuarios/:id', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Apenas administradores e programadores podem excluir usuários.' });
+    if (String(req.user?.id) === String(req.params.id)) return res.status(400).json({ error: 'Não é permitido excluir o próprio usuário.' });
+    const userId = req.params.id;
+    const profileResult = await supabase.from('usuario_perfis').delete().eq('user_id', userId);
+    if (profileResult.error) return res.status(400).json({ error: profileResult.error.message });
+    const accessResult = await supabase.from('acessos_operacionais_usuarios').delete().eq('user_id', userId);
+    if (accessResult.error) return res.status(400).json({ error: accessResult.error.message });
+    const userResult = await supabase.from('users').delete().eq('userid', userId);
+    if (userResult.error) return res.status(400).json({ error: userResult.error.message });
+    return res.status(204).send();
   });
 
   operationsRouter.post('/configuracoes/opcoes', async (req: any, res) => {
@@ -307,7 +370,7 @@ export function createOperationsRouter(supabase: SupabaseClient) {
       const mapped = new Set((mappings || []).map((item: any) => item.advbox_stage_key));
       const { data: stages, error: stagesError } = await supabase.from('workflow_stages').select('id, module, categoria, name, position').eq('active', true).order('module').order('position');
       if (stagesError) return res.status(500).json({ error: stagesError.message });
-      const pending = new Map<string, { key: string; nome: string }>();
+      const pending = new Map<string, { key: string; nome: string; step: string; stage: string }>();
       const limit = 1000;
       for (let offset = 0; ; offset += limit) {
         const url = new URL('https://app.advbox.com.br/api/v1/lawsuits'); url.searchParams.set('limit', String(limit)); url.searchParams.set('offset', String(offset));
@@ -319,6 +382,38 @@ export function createOperationsRouter(supabase: SupabaseClient) {
       }
       return res.json({ pendentes: [...pending.values()], stages: stages || [] });
     } catch (error: any) { return res.status(502).json({ error: error.message }); }
+  });
+
+  operationsRouter.get('/importacoes/advbox/configuracoes/pendentes', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Somente administradores e programadores podem consultar configurações.' });
+    const token = process.env.ADVBOX_API_TOKEN; if (!token) return res.status(400).json({ error: 'ADVBOX_API_TOKEN não foi definido no backend.' });
+    try {
+      const response = await fetch('https://app.advbox.com.br/api/v1/settings', { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(`ADVBOX respondeu ${response.status}`);
+      const settings: any = await response.json(); const data = Array.isArray(settings) ? settings[0] || {} : settings;
+      const [mappings, origins, types, tasks] = await Promise.all([
+        supabase.from('advbox_configuration_mappings').select('*'), supabase.from('origens').select('id, nome').eq('ativo', true), supabase.from('tipos_processo').select('id, titulo').eq('ativo', true), supabase.from('configuracoes_operacionais').select('id, nome').eq('categoria', 'tarefa').eq('ativo', true),
+      ]);
+      const error = mappings.error || origins.error || types.error || tasks.error; if (error) return res.status(500).json({ error: error.message });
+      const mapped = new Set((mappings.data || []).map((item: any) => `${item.tipo}:${item.advbox_id}`));
+      const pending = (tipo: string, values: any[], label: string) => (values || []).map((item) => ({ id: String(item.id), nome: String(item[label] || item.name || item.task || item.type || '') })).filter((item) => item.nome && !mapped.has(`${tipo}:${item.id}`));
+      return res.json({ pendentes: { origens: pending('origens', data.origins, 'origin'), tipos_processo: pending('tipos_processo', data.lawsuit_types, 'type'), tarefas: pending('tarefas', data.tasks, 'task') }, destinos: { origens: origins.data || [], tipos_processo: types.data || [], tarefas: tasks.data || [] } });
+    } catch (error: any) { return res.status(502).json({ error: error.message }); }
+  });
+
+  operationsRouter.put('/importacoes/advbox/configuracoes/:tipo/:id', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Somente administradores e programadores podem mapear configurações.' });
+    const tipo = req.params.tipo; const acao = req.body.acao;
+    if (!['origens', 'tipos_processo', 'tarefas'].includes(tipo) || !['vincular', 'criar', 'ignorar'].includes(acao)) return res.status(400).json({ error: 'Mapeamento inválido.' });
+    if (acao === 'vincular' && !req.body.destinoId) return res.status(400).json({ error: 'Selecione um cadastro de destino.' });
+    let destinoId = req.body.destinoId || null;
+    if (acao === 'criar') {
+      const created = tipo === 'origens' ? await supabase.from('origens').insert({ nome: req.body.nome, ativo: true }).select('id').single() : tipo === 'tipos_processo' ? await supabase.from('tipos_processo').insert({ titulo: req.body.nome, ativo: true }).select('id').single() : await supabase.from('configuracoes_operacionais').insert({ categoria: 'tarefa', nome: req.body.nome, tipo_evento: 'tarefa', ativo: true }).select('id').single();
+      if (created.error) return res.status(400).json({ error: created.error.message });
+      destinoId = created.data.id;
+    }
+    const { data, error } = await supabase.from('advbox_configuration_mappings').upsert({ tipo, advbox_id: req.params.id, advbox_nome: req.body.nome, acao, destino_id: destinoId, updated_at: new Date().toISOString() }, { onConflict: 'tipo,advbox_id' }).select().single();
+    if (error) return res.status(400).json({ error: error.message }); return res.json(data);
   });
 
   operationsRouter.post('/importacoes/advbox/clientes/importar', async (req: any, res) => {
@@ -364,14 +459,18 @@ export function createOperationsRouter(supabase: SupabaseClient) {
       const url = new URL('https://app.advbox.com.br/api/v1/lawsuits'); url.searchParams.set('limit', String(limit)); url.searchParams.set('offset', String(offset));
       const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) throw new Error(`ADVBOX respondeu ${response.status}`);
       const body: any = await response.json(); const records = Array.isArray(body) ? body : body.data || [];
-      const [stagesResult, mappingsResult] = await Promise.all([
+      const [stagesResult, mappingsResult, typeMappingsResult, typesResult] = await Promise.all([
         supabase.from('workflow_stages').select('id, module, categoria').eq('active', true),
         supabase.from('advbox_stage_mappings').select('advbox_stage_key, advbox_stage_name, destino, stage_id'),
+        supabase.from('advbox_configuration_mappings').select('advbox_id, acao, destino_id').eq('tipo', 'tipos_processo'),
+        supabase.from('tipos_processo').select('id, titulo'),
       ]);
-      if (stagesResult.error || mappingsResult.error) throw new Error(stagesResult.error?.message || mappingsResult.error?.message || 'Não foi possível carregar os mapeamentos de etapa.');
+      if (stagesResult.error || mappingsResult.error || typeMappingsResult.error || typesResult.error) throw new Error(stagesResult.error?.message || mappingsResult.error?.message || typeMappingsResult.error?.message || typesResult.error?.message || 'Não foi possível carregar os mapeamentos de etapa.');
       const stagesById = new Map((stagesResult.data || []).map((stage: any) => [stage.id, stage]));
       const mappingByKey = new Map((mappingsResult.data || []).map((mapping: any) => [mapping.advbox_stage_key, mapping]));
       const mappingByName = new Map((mappingsResult.data || []).filter((mapping: any) => mapping.advbox_stage_name).map((mapping: any) => [String(mapping.advbox_stage_name).trim().toLowerCase(), mapping]));
+      const typeMappingById = new Map((typeMappingsResult.data || []).map((mapping: any) => [String(mapping.advbox_id), mapping]));
+      const typeNameById = new Map((typesResult.data || []).map((type: any) => [type.id, type.titulo]));
       let imported = 0; let skipped = 0; const errors: string[] = []; const pendingStages = new Map<string, { key: string; nome: string; step: string; stage: string }>();
       for (const item of records) {
         const advboxId = String(item.id || item.lawsuit_id || ''); const customerId = advboxCustomerId(item); const sourceStage = advboxStageIdentity(item); const isArchived = /arquiv/.test(sourceStage.step.toLowerCase()); const stageMapping = isArchived ? { destino: 'arquivado', stage_id: null } : mappingByKey.get(sourceStage.key) || mappingByName.get(sourceStage.stage.trim().toLowerCase()) || mappingByName.get(sourceStage.name.trim().toLowerCase());
@@ -387,7 +486,7 @@ export function createOperationsRouter(supabase: SupabaseClient) {
           }
         }
         if (!client) { errors.push(`Cliente ADVBOX ${customerId} não foi localizado`); skipped++; continue; }
-        const type = advboxValue(item.type) || advboxValue(item.type_lawsuits) || advboxValue(item.type_lawsuit);
+        const rawType = advboxValue(item.type) || advboxValue(item.type_lawsuits) || advboxValue(item.type_lawsuit); const typeMapping = typeMappingById.get(String(item.type_lawsuit_id || item.type_lawsuits_id || '')); const type = typeMapping?.acao === 'ignorar' ? null : typeMapping?.destino_id ? typeNameById.get(typeMapping.destino_id) || rawType : rawType;
         const mappedStage = stageMapping.stage_id ? stagesById.get(stageMapping.stage_id) : null;
         if (stageMapping.destino === 'atendimento' || mappedStage?.module === 'comercial') {
           const attendancePayload = { advbox_id: advboxId, cliente_id: client.id, stage_id: mappedStage?.id || null, assunto: type || sourceStage.name || 'Atendimento ADVBOX', descricao: item.notes || null, responsavel: advboxValue(item.process_owner), origem: 'ADVBOX' };
@@ -409,6 +508,134 @@ export function createOperationsRouter(supabase: SupabaseClient) {
       // seguimos para a próxima página; uma última consulta vazia encerra a importação.
       return res.json({ totalLido: records.length, totalImportado: imported, totalIgnorado: skipped, erros: errors.slice(0, 10), etapasPendentes: [...pendingStages.values()], proximoOffset: offset + records.length, temMais: records.length === limit });
     } catch (error: any) { return res.status(502).json({ error: error.message }); }
+  });
+
+  operationsRouter.post('/importacoes/advbox/tarefas/importar', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Somente administradores e programadores podem importar dados.' });
+    const token = process.env.ADVBOX_API_TOKEN; if (!token) return res.status(400).json({ error: 'ADVBOX_API_TOKEN não foi definido no backend.' });
+    try {
+      const offset = Math.max(0, Number(req.body?.offset || 0)); const limit = Math.min(1000, Math.max(1, Number(req.body?.limit || 1000)));
+      const url = new URL('https://app.advbox.com.br/api/v1/posts'); url.searchParams.set('limit', String(limit)); url.searchParams.set('offset', String(offset));
+      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) throw new Error(`ADVBOX respondeu ${response.status}`);
+      const body: any = await response.json(); const records = Array.isArray(body) ? body : body.data || [];
+      let mappingsResult: any = await supabase.from('advbox_user_mappings').select('advbox_user_id, user_id, ignorado');
+      if (mappingsResult.error && /ignorado/i.test(mappingsResult.error.message || '')) mappingsResult = await supabase.from('advbox_user_mappings').select('advbox_user_id, user_id');
+      const profilesResult: any = await supabase.from('usuario_perfis').select('user_id, nome, advbox_id');
+      if (mappingsResult.error || profilesResult.error) throw mappingsResult.error || profilesResult.error;
+      const profilesByUserId = new Map((profilesResult.data || []).map((profile: any) => [String(profile.user_id), profile]));
+      const profilesByAdvboxId = new Map((profilesResult.data || []).filter((profile: any) => profile.advbox_id).map((profile: any) => [String(profile.advbox_id), profile]));
+      const mappedUsers = new Map((mappingsResult.data || []).map((mapping: any) => [String(mapping.advbox_user_id), mapping]));
+      let imported = 0; let skipped = 0; let completedImported = 0; const errors: string[] = [];
+      for (const item of records) {
+        const advboxId = String(item.id || item.post_id || '');
+        const lawsuitId = String(item.lawsuits_id || item.lawsuit_id || item.lawsuit?.id || item.lawsuit?.lawsuit_id || '');
+        const title = String(item.task || item.title || 'Tarefa ADVBOX').trim();
+        if (!advboxId || !lawsuitId) { skipped++; continue; }
+        const { data: process } = await supabase.from('processos').select('id, cliente_id').eq('advbox_id', lawsuitId).maybeSingle();
+        if (!process) { errors.push(`Processo ADVBOX ${lawsuitId} não localizado para a tarefa ${advboxId}`); skipped++; continue; }
+        const owners = Array.isArray(item.users) ? item.users.map((user: any) => {
+          const sourceId = String(user.id || user.user_id || user.userid || ''); const mapped: any = mappedUsers.get(sourceId);
+          if (mapped?.ignorado) return null;
+          const target: any = profilesByUserId.get(String(mapped?.user_id || '')) || profilesByAdvboxId.get(sourceId);
+          return { nome: target?.nome || user.name || user.username || user.full_name || user.user_name || user.email, userId: target?.user_id ? String(target.user_id) : null, concluidaEm: user.completed || user.completed_at || null };
+        }).filter((owner: any) => owner?.nome) : [];
+        const taskOwners = [...new Set(owners.map((owner: any) => owner.nome))];
+        const completedAt = item.completed || item.completed_at || item.finished_at || null;
+        const completed = Boolean(completedAt) || (owners.length === 1 && Boolean(owners[0].concluidaEm)) || (owners.length > 1 && owners.every((owner: any) => owner.concluidaEm));
+        const payload = { advbox_id: advboxId, cliente_id: process.cliente_id, processo_id: process.id, titulo: title, descricao: item.notes || item.description || null, responsavel: taskOwners.join(', ') || null, prazo: item.date || item.date_deadline || item.due_date || null, prazo_fatal: item.date_deadline || item.due_date || null, status: completed ? 'concluida' : 'pendente', concluida_em: completedAt, classificacao: Array.isArray(item.users) && item.users.some((user: any) => user.urgent) ? 'urgente' : Array.isArray(item.users) && item.users.some((user: any) => user.important) ? 'importante' : 'normal', advbox_criado_em: item.created_at || item.created || null };
+        const { data: existing } = await supabase.from('tarefas').select('id').eq('advbox_id', advboxId).maybeSingle();
+        if (existing) {
+          const { error } = await supabase.from('tarefas').update(payload).eq('id', existing.id);
+          if (error) { errors.push(error.message); skipped++; continue; }
+          const completions = owners.filter((owner: any) => owner.userId && owner.concluidaEm).map((owner: any) => ({ tarefa_id: existing.id, user_id: owner.userId, concluida_em: owner.concluidaEm }));
+          if (completions.length) await supabase.from('tarefa_conclusoes').upsert(completions, { onConflict: 'tarefa_id,user_id' });
+          imported++; if (completed) completedImported++; continue;
+        }
+        const { data: parent } = await supabase.from('tarefas').select('id').eq('processo_id', process.id).eq('titulo', title).is('tarefa_pai_id', null).order('created_at').limit(1).maybeSingle();
+        const { data: createdTask, error } = await supabase.from('tarefas').insert({ ...payload, tarefa_pai_id: parent?.id || null }).select('id').single();
+        if (error) { errors.push(error.message); skipped++; } else {
+          const completions = owners.filter((owner: any) => owner.userId && owner.concluidaEm).map((owner: any) => ({ tarefa_id: createdTask.id, user_id: owner.userId, concluida_em: owner.concluidaEm }));
+          if (completions.length) await supabase.from('tarefa_conclusoes').upsert(completions, { onConflict: 'tarefa_id,user_id' });
+          imported++; if (completed) completedImported++;
+        }
+      }
+      return res.json({ totalLido: records.length, totalImportado: imported, totalConcluidas: completedImported, totalIgnorado: skipped, erros: errors.slice(0, 10), proximoOffset: offset + records.length, temMais: records.length === limit });
+    } catch (error: any) { return res.status(502).json({ error: error.message }); }
+  });
+
+  operationsRouter.post('/importacoes/advbox/usuarios/importar', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Somente administradores e programadores podem importar dados.' });
+    const token = process.env.ADVBOX_API_TOKEN;
+    if (!token) return res.status(400).json({ error: 'ADVBOX_API_TOKEN não foi definido no backend.' });
+    try {
+      const response = await fetch('https://app.advbox.com.br/api/v1/settings', { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error(`ADVBOX respondeu ${response.status}`);
+      const body: any = await response.json();
+      const records = Array.isArray(body?.users) ? body.users : Array.isArray(body?.data?.users) ? body.data.users : [];
+      let imported = 0; let updated = 0; let skipped = 0; const errors: string[] = [];
+      for (const item of records) {
+        const advboxId = String(item.id || item.user_id || item.userid || '').trim();
+        const nome = String(item.name || item.username || item.full_name || '').trim();
+        const email = String(item.email || item.useremail || '').trim().toLowerCase();
+        const telefone = item.cellphone || item.phone || item.telephone || null;
+        if (!advboxId || !nome || !email) { skipped++; errors.push(`Usuário ADVBOX ${advboxId || nome || 'sem identificação'} sem nome, e-mail ou ID.`); continue; }
+        const { data: profile, error: profileLookupError } = await supabase.from('usuario_perfis').select('user_id').eq('advbox_id', advboxId).maybeSingle();
+        if (profileLookupError) throw profileLookupError;
+        let userId = profile?.user_id ? String(profile.user_id) : '';
+        if (!userId) {
+          const { data: existingUser, error: existingUserError } = await supabase.from('users').select('userid').eq('useremail', email).maybeSingle();
+          if (existingUserError) throw existingUserError;
+          userId = existingUser?.userid ? String(existingUser.userid) : '';
+        }
+        if (userId) {
+          const { error: updateUserError } = await supabase.from('users').update({ username: nome, useremail: email }).eq('userid', userId);
+          if (updateUserError) { skipped++; errors.push(updateUserError.message); continue; }
+          const { data: existingProfile, error: existingProfileError } = await supabase.from('usuario_perfis').select('user_id').eq('user_id', userId).maybeSingle();
+          if (existingProfileError) throw existingProfileError;
+          const profilePayload = { nome, email, telefone, cargo: item.role || item.position || null, tipo_acesso: 'colaborador', ativo: item.active !== false, advbox_id: advboxId };
+          const result = existingProfile
+            ? await supabase.from('usuario_perfis').update(profilePayload).eq('user_id', userId)
+            : await supabase.from('usuario_perfis').insert({ user_id: userId, ...profilePayload });
+          if (result.error) { skipped++; errors.push(result.error.message); continue; }
+          updated++;
+        } else {
+          const passwordHash = await bcrypt.hash('Hb#123456', 10);
+          const { data: createdUser, error: createdUserError } = await supabase.from('users').insert({ username: nome, useremail: email, userpass: passwordHash, roleid: 3 }).select('userid').single();
+          if (createdUserError) { skipped++; errors.push(createdUserError.message); continue; }
+          const { error: profileError } = await supabase.from('usuario_perfis').insert({ user_id: String(createdUser.userid), nome, email, telefone, cargo: item.role || item.position || null, tipo_acesso: 'colaborador', ativo: item.active !== false, advbox_id: advboxId });
+          if (profileError) { await supabase.from('users').delete().eq('userid', createdUser.userid); skipped++; errors.push(profileError.message); continue; }
+          imported++;
+        }
+      }
+      return res.json({ totalLido: records.length, totalImportado: imported, totalAtualizado: updated, totalIgnorado: skipped, erros: errors.slice(0, 10) });
+    } catch (error: any) { return res.status(502).json({ error: error.message }); }
+  });
+
+  operationsRouter.get('/importacoes/advbox/usuarios/mapeamentos', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Somente administradores e programadores podem consultar os vínculos.' });
+    const token = process.env.ADVBOX_API_TOKEN; if (!token) return res.status(400).json({ error: 'ADVBOX_API_TOKEN não foi definido no backend.' });
+      const [profilesResult, advboxResponse] = await Promise.all([
+        supabase.from('usuario_perfis').select('user_id, nome, email, ativo').order('nome'),
+        fetch('https://app.advbox.com.br/api/v1/settings', { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+    let mappingsResult: any = await supabase.from('advbox_user_mappings').select('advbox_user_id, advbox_user_name, user_id, ignorado');
+    if (mappingsResult.error && /ignorado/i.test(mappingsResult.error.message || '')) mappingsResult = await supabase.from('advbox_user_mappings').select('advbox_user_id, advbox_user_name, user_id');
+    if (profilesResult.error || mappingsResult.error) return res.status(400).json({ error: profilesResult.error?.message || mappingsResult.error?.message });
+    if (!advboxResponse.ok) return res.status(502).json({ error: `ADVBOX respondeu ${advboxResponse.status}` });
+    const advboxPayload: any = await advboxResponse.json(); const advboxUsers = Array.isArray(advboxPayload?.users) ? advboxPayload.users : Array.isArray(advboxPayload?.data?.users) ? advboxPayload.data.users : [];
+    const mappings = new Map((mappingsResult.data || []).map((mapping: any) => [String(mapping.advbox_user_id), mapping]));
+    const sources = advboxUsers.map((user: any) => { const advboxId = String(user.id || user.user_id || user.userid || ''); const mapping: any = mappings.get(advboxId); return { advboxId, nome: user.name || user.username || user.full_name || user.email || 'Usuário sem nome', destinoId: mapping?.user_id || '', ignorado: Boolean(mapping?.ignorado) }; }).filter((item: any) => item.advboxId);
+    return res.json({ fontes: sources, destinos: profilesResult.data || [] });
+  });
+
+  operationsRouter.put('/importacoes/advbox/usuarios/mapeamentos/:advboxUserId', async (req: any, res) => {
+    if (!await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Somente administradores e programadores podem alterar os vínculos.' });
+    const ignored = req.body?.acao === 'ignorar'; const userId = String(req.body?.userId || '');
+    if (!ignored) { if (!userId) return res.status(400).json({ error: 'Selecione o usuário de destino.' }); const { data: destination, error: destinationError } = await supabase.from('usuario_perfis').select('user_id').eq('user_id', userId).maybeSingle(); if (destinationError || !destination) return res.status(400).json({ error: destinationError?.message || 'Usuário de destino não encontrado.' }); }
+    const sourceId = String(req.params.advboxUserId); const sourceName = String(req.body?.nome || 'Usuário ADVBOX');
+    if (ignored) return res.status(400).json({ error: 'Aplique a migration 20260821_mapeamento_responsaveis_advbox.sql para habilitar Ignorar usuário.' });
+    const { data, error } = await supabase.from('advbox_user_mappings').upsert({ advbox_user_id: sourceId, advbox_user_name: sourceName, user_id: userId, updated_at: new Date().toISOString() }, { onConflict: 'advbox_user_id' }).select().single();
+    if (error) return res.status(400).json({ error: error.message }); return res.json(data);
   });
 
   operationsRouter.post('/importacoes/:id/executar', async (req: any, res) => {
@@ -607,13 +834,22 @@ export function createOperationsRouter(supabase: SupabaseClient) {
     return res.status(201).json(processo);
   });
 
-  operationsRouter.get('/tarefas', async (req, res) => {
-    let query = supabase.from('tarefas').select('*').order('prazo', { ascending: true });
-    if (req.query.atendimentoId) query = query.eq('atendimento_id', String(req.query.atendimentoId));
-    if (req.query.processoId) query = query.eq('processo_id', String(req.query.processoId));
-    const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
-    return res.json(data);
+  operationsRouter.get('/tarefas', async (req: any, res) => {
+    const tasks: any[] = []; const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      let query: any = supabase.from('tarefas').select('*').order('prazo', { ascending: false }).order('created_at', { ascending: false }).range(from, from + pageSize - 1);
+      if (req.query.atendimentoId) query = query.eq('atendimento_id', String(req.query.atendimentoId));
+      if (req.query.processoId) query = query.eq('processo_id', String(req.query.processoId));
+      const { data, error } = await query;
+      if (error) return res.status(500).json({ error: error.message });
+      tasks.push(...(data || [])); if ((data || []).length < pageSize) break;
+    }
+    const { data: completions, error: completionsError } = tasks.length
+      ? await supabase.from('tarefa_conclusoes').select('tarefa_id').eq('user_id', String(req.user?.id || ''))
+      : { data: [], error: null } as any;
+    if (completionsError && !/tarefa_conclusoes|schema cache/i.test(completionsError.message || '')) return res.status(500).json({ error: completionsError.message });
+    const completedByCurrentUser = new Set((completions || []).map((item: any) => String(item.tarefa_id)));
+    return res.json(tasks.map((task) => ({ ...task, concluida_por_mim: completedByCurrentUser.has(String(task.id)) })));
   });
 
   operationsRouter.get('/tarefas/:id/comentarios', async (req, res) => {
@@ -630,16 +866,58 @@ export function createOperationsRouter(supabase: SupabaseClient) {
     return res.status(201).json(data);
   });
 
+  operationsRouter.delete('/tarefas/comentarios/:id', async (req: any, res) => {
+    const { data: comment, error: findError } = await supabase.from('tarefa_comentarios').select('id, autor_id').eq('id', req.params.id).maybeSingle();
+    if (findError) return res.status(500).json({ error: findError.message });
+    if (!comment) return res.status(404).json({ error: 'Comentário não encontrado.' });
+    const isAuthor = String(comment.autor_id || '') === String(req.user?.id || '');
+    if (!isAuthor && !await hasConfigurationAccess(supabase, req.user)) return res.status(403).json({ error: 'Você só pode excluir seus próprios comentários.' });
+    const { error } = await supabase.from('tarefa_comentarios').delete().eq('id', comment.id);
+    if (error) return res.status(400).json({ error: error.message });
+    return res.status(204).send();
+  });
+
+  operationsRouter.post('/tarefas/:id/concluir', async (req: any, res) => {
+    const userId = String(req.user?.id || '');
+    if (!userId) return res.status(401).json({ error: 'Usuário não identificado.' });
+    const { data: task, error: taskError } = await supabase.from('tarefas').select('id, responsavel').eq('id', req.params.id).maybeSingle();
+    if (taskError || !task) return res.status(404).json({ error: 'Tarefa não encontrada.' });
+    const { error: completionError } = await supabase.from('tarefa_conclusoes').upsert({ tarefa_id: task.id, user_id: userId, concluida_em: new Date().toISOString() }, { onConflict: 'tarefa_id,user_id' });
+    if (completionError) return res.status(400).json({ error: completionError.message.includes('tarefa_conclusoes') ? 'Aplique a migration de conclusões individuais para concluir tarefas com múltiplos responsáveis.' : completionError.message });
+    const owners = String(task.responsavel || '').split(',').map((name) => name.trim()).filter(Boolean);
+    const { data, error } = owners.length <= 1
+      ? await supabase.from('tarefas').update({ status: 'concluida', concluida_em: new Date().toISOString() }).eq('id', task.id).select().single()
+      : await supabase.from('tarefas').select().eq('id', task.id).single();
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({ ...data, concluida_por_mim: true });
+  });
+
+  operationsRouter.post('/tarefas/:id/relacionar', async (req, res) => {
+    const tarefaPaiId = req.body?.tarefaPaiId || null;
+    if (tarefaPaiId && String(tarefaPaiId) === String(req.params.id)) return res.status(400).json({ error: 'Uma tarefa não pode ser relacionada a ela mesma.' });
+    const { data, error } = await supabase.from('tarefas').update({ tarefa_pai_id: tarefaPaiId }).eq('id', req.params.id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json(data);
+  });
+
   operationsRouter.patch('/tarefas/:id', async (req, res) => {
     const titulo = required(req.body.titulo);
-    const { data, error } = await supabase.from('tarefas').update({
-      ...(titulo && { titulo }), descricao: req.body.descricao || null, responsavel: req.body.responsavel || null,
-      prazo: req.body.prazo || null, hora: req.body.hora || null, prazo_fatal: req.body.prazoFatal || null,
-      tipo: req.body.tipo || 'tarefa', local: req.body.local || null, classificacao: req.body.classificacao || 'normal',
-      ocultar_ate: req.body.ocultarAte || null, instrucao_necessaria: Boolean(req.body.instrucaoNecessaria),
-      situacao_evento: req.body.situacaoEvento || null,
-      status: req.body.status || 'pendente', concluida_em: req.body.status === 'concluida' ? new Date().toISOString() : null,
-    }).eq('id', req.params.id).select().single();
+    const payload: Record<string, unknown> = {};
+    if (titulo) payload.titulo = titulo;
+    if ('descricao' in req.body) payload.descricao = req.body.descricao || null;
+    if ('responsavel' in req.body) payload.responsavel = req.body.responsavel || null;
+    if ('prazo' in req.body) payload.prazo = req.body.prazo || null;
+    if ('hora' in req.body) payload.hora = req.body.hora || null;
+    if ('prazoFatal' in req.body) payload.prazo_fatal = req.body.prazoFatal || null;
+    if ('tipo' in req.body) payload.tipo = req.body.tipo || 'tarefa';
+    if ('local' in req.body) payload.local = req.body.local || null;
+    if ('classificacao' in req.body) payload.classificacao = req.body.classificacao || 'normal';
+    if ('ocultarAte' in req.body) payload.ocultar_ate = req.body.ocultarAte || null;
+    if ('instrucaoNecessaria' in req.body) payload.instrucao_necessaria = Boolean(req.body.instrucaoNecessaria);
+    if ('situacaoEvento' in req.body) payload.situacao_evento = req.body.situacaoEvento || null;
+    if ('tarefaPaiId' in req.body) payload.tarefa_pai_id = req.body.tarefaPaiId || null;
+    if ('status' in req.body) { payload.status = req.body.status || 'pendente'; payload.concluida_em = req.body.status === 'concluida' ? new Date().toISOString() : null; }
+    const { data, error } = await supabase.from('tarefas').update(payload).eq('id', req.params.id).select().single();
     if (error) return res.status(400).json({ error: error.message });
     return res.json(data);
   });

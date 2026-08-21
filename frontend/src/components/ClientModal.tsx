@@ -7,6 +7,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
+  MessageCircle,
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -974,7 +975,7 @@ export function ClientModal({
    */
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-slate-100 my-8">
 
         {/* CABEÇALHO */}
@@ -1833,6 +1834,7 @@ export function ClientModal({
           {/* AÇÕES */}
 
           <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-3 sticky bottom-0 bg-white py-2">
+            {clientToEdit?.id && clientToEdit.telefone && <button type="button" onClick={() => { const phone = String(clientToEdit.telefone || '').replace(/\D/g, ''); if (phone) window.open(`https://crm.datacrazy.io/multiservice?search=${phone}`, '_blank', 'noopener,noreferrer'); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"><MessageCircle size={16} />Conversar</button>}
             {clientToEdit?.id && onNewProcess && (
               <button
                 type="button"
